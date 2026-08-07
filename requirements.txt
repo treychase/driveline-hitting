@@ -1,0 +1,11 @@
+pandas
+numpy
+requests
+certifi
+matplotlib
+scikit-learn
+xgboost
+
+# Raw C3D reading and the animated swing dashboard
+ezc3d
+plotly

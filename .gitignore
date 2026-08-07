@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+
+# Raw C3D files are pulled from the openbiomechanics release by download_c3d()
+data/c3d/
+data/*.zip
+
+.ipynb_checkpoints/
+.venv/
+venv/
