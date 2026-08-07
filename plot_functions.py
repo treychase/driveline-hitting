@@ -92,3 +92,54 @@ def plot_keyword_summary(summary_df):
     ax.spines["right"].set_visible(False)
     plt.tight_layout()
     plt.show()
+
+    # Feature Importance Plot
+
+# Plotting feature importance
+
+def plot_feature_importance(model, feature_names, top_n=15):
+    import matplotlib.pyplot as plt
+    import pandas as pd
+ 
+    importances = pd.Series(model.feature_importances_, index=feature_names)
+    importances = importances.sort_values(ascending=True).tail(top_n)
+    labels = [name.replace("_", " ").title() for name in importances.index]
+ 
+    fig, ax = plt.subplots(figsize=(8, max(4, 0.4 * len(labels))))
+    ax.barh(labels, importances.values, color="lightblue", edgecolor="black")
+ 
+    ax.set_xlabel("Importance")
+    ax.set_title("Feature Importance")
+    ax.grid(False)
+    plt.tight_layout()
+    plt.show()
+
+# Plot regression diagnostics 
+
+def plot_regression_diagnostics(model, X, y):
+    import matplotlib.pyplot as plt
+ 
+    preds = model.predict(X)
+    residuals = y - preds
+ 
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
+ 
+    axes[0].scatter(y, preds, color="lightblue", edgecolor="black", alpha=0.7)
+    lims = [min(y.min(), preds.min()), max(y.max(), preds.max())]
+    axes[0].plot(lims, lims, color="red", linestyle="--")
+    axes[0].set_xlabel("Actual")
+    axes[0].set_ylabel("Predicted")
+    axes[0].set_title("Predicted Vs Actual")
+    axes[0].grid(False)
+ 
+    axes[1].scatter(preds, residuals, color="lightblue", edgecolor="black", alpha=0.7)
+    axes[1].axhline(0, color="red", linestyle="--")
+    axes[1].set_xlabel("Predicted")
+    axes[1].set_ylabel("Residual")
+    axes[1].set_title("Residuals Vs Predicted")
+    axes[1].grid(False)
+ 
+    plt.tight_layout()
+    plt.show()
+
+
