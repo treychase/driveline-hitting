@@ -40,16 +40,37 @@ POST_CONTACT_S = 0.12
 N_FRAMES = 90
 TRAIL_FRAMES = 18
 
-BACKGROUND = "#11141c"
-PANEL = "#171b26"
-BODY_COLOR = "#8fd3f4"
-BAT_COLOR = "#ff9f43"
-TRAIL_COLOR = "#ff6b6b"
-LEAD_COLOR = "#4dd4ac"
-REAR_COLOR = "#b98cff"
-PLATE_COLOR = "#2b3244"
-TEXT_COLOR = "#e6e9f0"
-GRID_COLOR = "#2a3040"
+# ---------------------------------------------------------------------------
+# Driveline palette. Every colour in the figure, the Streamlit theme in
+# .streamlit/config.toml and the docs comes from here, so swapping the brand
+# hexes is a single edit in this block.
+#
+# Built from the monochrome logo treatment Driveline uses on their own charts:
+# a near-black ground, a neutral grey ramp biased slightly warm, and one
+# saturated accent carrying the bat.
+# ---------------------------------------------------------------------------
+DL_BLACK = "#0e0f12"
+DL_CHARCOAL = "#16181d"
+DL_SLATE = "#23262e"
+DL_GREY = "#6f7681"
+DL_BONE = "#eceef1"
+DL_RED = "#e23c2f"
+DL_STEEL = "#7fa8c9"
+DL_MOSS = "#5fbf9b"
+DL_PLUM = "#a98cd0"
+
+BACKGROUND = DL_BLACK
+PANEL = DL_CHARCOAL
+GRID_COLOR = DL_SLATE
+TEXT_COLOR = DL_BONE
+MUTED_COLOR = DL_GREY
+
+BODY_COLOR = DL_STEEL
+BAT_COLOR = DL_RED
+TRAIL_COLOR = "#f2856f"
+LEAD_COLOR = DL_MOSS
+REAR_COLOR = DL_PLUM
+PLATE_COLOR = "#2c3038"
 
 
 def pick_showcase(index, n=8, restrict_to=None):
@@ -156,6 +177,7 @@ def prepare_swings(rows, n_frames=N_FRAMES, pre_s=PRE_CONTACT_S, post_s=POST_CON
 
 
 def _swing_label(row):
+    """One line naming the hitter, their side, exit velo and level, for the dropdown."""
     level = row.get("highest_playing_level")
     level = f" · {level}" if isinstance(level, str) else ""
     return (
@@ -165,6 +187,7 @@ def _swing_label(row):
 
 
 def _subtitle(swing):
+    """The detail line under the title: build, bat speed, exit velo, bat, model miss."""
     row = swing["row"]
     feet, inches = divmod(int(row["height_in"]), 12)
     bits = [
@@ -202,6 +225,44 @@ def _plate_traces(plates):
             )
         )
     return traces
+
+
+def _miss_arrow(prediction):
+    """Arrow from where the swing sat on the parity line to where the model put it.
+
+    Its tail is (actual, actual), so the arrow's length along the y axis is the
+    miss itself: pointing up means the model over-called the swing, down means
+    it under-called it.
+    """
+    if not prediction:
+        return dict(text="", showarrow=False, x=0, y=0, xref="x2", yref="y3", opacity=0)
+
+    actual, predicted = prediction
+    over = predicted >= actual
+    return dict(
+        x=actual,
+        y=predicted,
+        ax=actual,
+        ay=actual,
+        xref="x2",
+        yref="y3",
+        axref="x2",
+        ayref="y3",
+        text=f"{predicted - actual:+.1f} mph",
+        font=dict(size=11, color=TEXT_COLOR),
+        bgcolor=PANEL,
+        bordercolor=BAT_COLOR,
+        borderwidth=1,
+        borderpad=3,
+        xanchor="left" if over else "right",
+        xshift=10 if over else -10,
+        showarrow=True,
+        arrowhead=2,
+        arrowsize=1.1,
+        arrowwidth=1.8,
+        arrowcolor=BAT_COLOR,
+        opacity=1,
+    )
 
 
 def _time_cursor(t_ms):
@@ -245,7 +306,7 @@ def _model_traces(predictions):
             x=[lo, hi],
             y=[lo, hi],
             mode="lines",
-            line=dict(color="#485570", width=1, dash="dash"),
+            line=dict(color=MUTED_COLOR, width=1, dash="dash"),
             hoverinfo="skip",
             showlegend=False,
         ),
@@ -448,16 +509,27 @@ def swing_dashboard(
         )
     fig.frames = frames
 
+    fig.update_layout(_layout(prepared, time_ms, title, model_range), sliders=[_slider(time_ms)])
+
+    # Added after the layout so it lands behind the subplot titles make_subplots
+    # already put in layout.annotations, rather than replacing them.
+    arrow_index = None
+    if has_model:
+        fig.add_annotation(_miss_arrow(prepared[0]["prediction"]))
+        arrow_index = len(fig.layout.annotations) - 1
+
     menus = [_play_menu()]
     if show_selector and len(prepared) > 1:
-        menus.append(_swing_menu(fig, prepared, animated, shared, title))
-
-    fig.update_layout(
-        _layout(prepared, time_ms, title, model_range),
-        updatemenus=menus,
-        sliders=[_slider(time_ms)],
-    )
+        menus.append(_swing_menu(fig, prepared, animated, shared, title, arrow_index))
+    fig.update_layout(updatemenus=menus)
     return fig
+
+
+def _arrow_relayout(index, prediction):
+    """The arrow's per-swing properties, flattened for a dropdown relayout."""
+    arrow = _miss_arrow(prediction)
+    keys = ("x", "y", "ax", "ay", "text", "xanchor", "xshift", "showarrow", "opacity")
+    return {f"annotations[{index}].{key}": arrow.get(key) for key in keys}
 
 
 def _scene_range(swing):
@@ -479,6 +551,7 @@ def _scene_ranges(swing):
 
 
 def _layout(prepared, time_ms, title, model_range=None):
+    """The figure's layout: palette, scene camera and ranges, and the two 2D axes."""
     low, high = _scene_range(prepared[0])
     axis = dict(
         backgroundcolor=PANEL,
@@ -489,7 +562,7 @@ def _layout(prepared, time_ms, title, model_range=None):
     )
     layout = dict(
         title=dict(
-            text=f"<b>{title}</b><br><span style='font-size:13px;color:#9aa3b5'>"
+            text=f"<b>{title}</b><br><span style='font-size:13px;color:{MUTED_COLOR}'>"
             f"{_subtitle(prepared[0])}</span>",
             x=0.015,
             y=0.97,
@@ -516,7 +589,7 @@ def _layout(prepared, time_ms, title, model_range=None):
             title="time to contact (ms)",
             range=[time_ms[0], time_ms[-1]],
             gridcolor=GRID_COLOR,
-            zerolinecolor="#4a5468",
+            zerolinecolor=MUTED_COLOR,
         ),
         yaxis=dict(title="bat speed (mph)", range=[0, 110], gridcolor=GRID_COLOR),
         yaxis2=dict(title="vertical force (% bodyweight)", range=[0, 320], showgrid=False),
@@ -538,6 +611,7 @@ def _layout(prepared, time_ms, title, model_range=None):
 
 
 def _play_menu():
+    """Play, slow motion and pause buttons driving the frame animation."""
     def step(duration):
         return dict(frame=dict(duration=duration, redraw=True), mode="immediate",
                     transition=dict(duration=0), fromcurrent=True)
@@ -565,7 +639,8 @@ def _play_menu():
     )
 
 
-def _swing_menu(fig, prepared, animated, shared, title):
+def _swing_menu(fig, prepared, animated, shared, title, arrow_index=None):
+    """Dropdown swapping which swing is visible, retitling and reframing as it goes."""
     n_traces = len(fig.data)
     buttons = []
     for swing, indices in zip(prepared, animated):
@@ -574,9 +649,11 @@ def _swing_menu(fig, prepared, animated, shared, title):
             visible[i] = True
         layout = {
             "title.text": f"<b>{title}</b><br>"
-            f"<span style='font-size:13px;color:#9aa3b5'>{_subtitle(swing)}</span>"
+            f"<span style='font-size:13px;color:{MUTED_COLOR}'>{_subtitle(swing)}</span>"
         }
         layout.update(_scene_ranges(swing))
+        if arrow_index is not None:
+            layout.update(_arrow_relayout(arrow_index, swing["prediction"]))
         buttons.append(
             dict(label=swing["label"], method="update", args=[{"visible": visible}, layout])
         )
@@ -596,6 +673,7 @@ def _swing_menu(fig, prepared, animated, shared, title):
 
 
 def _slider(time_ms):
+    """Frame slider labelled in milliseconds to contact."""
     return dict(
         active=0,
         x=0.02,

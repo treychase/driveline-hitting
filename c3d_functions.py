@@ -120,6 +120,11 @@ def load_metadata():
 
 
 def _parse_filename(path):
+    """Pull hitter, session, height, weight, side, swing number and exit velo from a path.
+
+    Returns ``None`` for anything that does not match the naming convention,
+    which is how the static model files get skipped.
+    """
     match = _FILENAME.match(Path(path).stem)
     if match is None:
         return None

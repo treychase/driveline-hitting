@@ -1,6 +1,12 @@
 # Plot histogram
 
 def plot_histogram(data, bins=30):
+    """Histogram per column, with the mean marked and the tails called out.
+
+    Accepts a Series or a DataFrame and lays multiple columns out in a grid.
+    Bars whose centre falls more than two standard deviations from the mean are
+    filled orange, so outliers are visible without reading the axis.
+    """
     import matplotlib.pyplot as plt
     import pandas as pd
  
@@ -46,6 +52,10 @@ def plot_histogram(data, bins=30):
 
 # Correlation Plot
 def plot_correlation(data):
+    """Correlation heatmap over every numeric column, annotated with the values.
+
+    Sized from the column count, so a wide frame produces a large figure.
+    """
     import matplotlib.pyplot as plt
  
     corr = data.corr(numeric_only=True)
@@ -73,6 +83,11 @@ def plot_correlation(data):
 
 
 def plot_keyword_summary(summary_df):
+    """Horizontal bar chart of how many columns match each keyword.
+
+    Takes the frame ``keyword_summary()`` returns and sorts it ascending, so the
+    densest parts of the dataset land at the top.
+    """
     import matplotlib.pyplot as plt
     
 
@@ -98,6 +113,10 @@ def plot_keyword_summary(summary_df):
 # Plotting feature importance
 
 def plot_feature_importance(model, feature_names, top_n=15):
+    """The fitted model's top_n features by importance, largest at the top.
+
+    Works with any estimator exposing ``feature_importances_``.
+    """
     import matplotlib.pyplot as plt
     import pandas as pd
  
@@ -117,6 +136,11 @@ def plot_feature_importance(model, feature_names, top_n=15):
 # Plot regression diagnostics 
 
 def plot_regression_diagnostics(model, X, y):
+    """Predicted against actual, and residuals against predicted, side by side.
+
+    The dashed line on the left is parity. A residual panel that slopes rather
+    than sitting flat is the model regressing toward the mean.
+    """
     import matplotlib.pyplot as plt
  
     preds = model.predict(X)

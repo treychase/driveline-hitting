@@ -4,21 +4,42 @@ from io import StringIO
 import requests
 
 def load_poi_metrics():
+    """Download the hitting point-of-interest table from the openbiomechanics repo.
+
+    One row per swing, keyed on ``session_swing``, with the biomechanical
+    metrics Driveline publishes for each capture.
+    """
     url = "https://raw.githubusercontent.com/drivelineresearch/openbiomechanics/main/baseball_hitting/data/poi/poi_metrics.csv"
     response = requests.get(url, verify=certifi.where())
     return pd.read_csv(StringIO(response.text))
 
 def load_hittrax():
+    """Download the HitTrax ball flight table, keyed on ``session_swing``.
+
+    Exit velocity, launch angle, spray angle, carry and the point of impact for
+    each tracked swing.
+    """
     url = "https://raw.githubusercontent.com/drivelineresearch/openbiomechanics/main/baseball_hitting/data/poi/hittrax.csv"
     response = requests.get(url, verify=certifi.where())
     return pd.read_csv(StringIO(response.text))
 
 def show_missingness(df):
+    """Non-null counts for the columns that have gaps, largest first.
+
+    Columns with no missing values are dropped, so an empty result means the
+    frame is complete.
+    """
     missing = df.isnull().sum()
     missing = missing[missing > 0].sort_values(ascending=False)
     return missing
 
 def create_keyword_dummies(df):
+    """Add a 0/1 column per body part, phase, measurement and event keyword.
+
+    Each flag records whether the swing has any non-null value among the columns
+    whose names contain that keyword. Raises ``ValueError`` when none of the
+    keywords match, which usually means the wrong frame was passed in.
+    """
     body_parts = ["pelvis", "torso", "hip", "shoulder", "knee", "wrist", "bat", "hand", "upper_arm", "x_factor", "cog"]
     phases = ["load", "stride", "swing"]
     measurements = ["max", "min"]
@@ -40,6 +61,11 @@ def create_keyword_dummies(df):
     return result
 
 def keyword_summary(df, keywords):
+    """Count how many columns contain each keyword, with one example each.
+
+    Returns a frame of keyword, count and example_column, ready for
+    ``plot_keyword_summary()``.
+    """
     rows = []
     for kw in keywords:
         matches = [col for col in df.columns if kw.lower() in col.lower()]
@@ -54,6 +80,11 @@ keywords = [
 ]
 
 def plot_keyword_summary(summary_df):
+    """Horizontal bar chart of column counts per keyword.
+
+    Kept here for the import path used early in the notebook; the same chart
+    lives in ``plot_functions.py``.
+    """
     import matplotlib.pyplot as plt
     
 

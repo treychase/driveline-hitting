@@ -37,6 +37,37 @@ only one swing is ever loaded and the page stays light. Any of the 687 swings is
 the eight in the static file. The download, the swing index and the model fit are all cached, so the
 wait is a first-run cost.
 
+Under the figure is a percentile table: where the selected swing's biomechanics rank against the 581
+swings the model was fit on.
+
+## Percentile dataset
+
+```bash
+python percentiles.py
+```
+
+Writes `data/biomech_percentiles.csv`, one row per modelled swing holding each of the model's eight
+input features alongside its percentile rank, plus exit velocity and its rank. That file is what
+powers the table in the app; `load_percentiles()` builds it on first use if it is not there.
+
+Ranks are inside this dataset, not against any wider population, and no metric has a good end. A high
+attack angle percentile means steeper than most of the room, not better than most of the room.
+
+## Colour
+
+Every colour in the figure comes from the palette block at the top of `dashboard.py`, and
+`.streamlit/config.toml` mirrors it for the page chrome. Changing the brand hexes means editing those
+two places and nothing else.
+
+## Documentation
+
+[`docs/api.md`](docs/api.md) documents every module, constant and function. It is generated from the
+source, so regenerate it after changing a signature or a docstring:
+
+```bash
+python docs/build_api_docs.py
+```
+
 `download_c3d()` fetches the 400 MB C3D archive from the openbiomechanics `dataset-v1` release into
 `data/c3d`, which is gitignored. Pass any subset of `index_swings()` rows to `prepare_swings()` to
 animate different hitters.
