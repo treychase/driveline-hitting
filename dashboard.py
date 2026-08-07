@@ -262,12 +262,21 @@ def _model_traces(predictions):
     ], (lo, hi)
 
 
-def swing_dashboard(prepared, predictions=None, title="Driveline hitters, swing by swing"):
+def swing_dashboard(
+    prepared,
+    predictions=None,
+    title="Driveline hitters, swing by swing",
+    show_selector=True,
+):
     """Assemble the animated dashboard for a list of prepared swings.
 
     Pass ``predictions`` as a frame of ``session_swing``, ``actual`` and
     ``predicted`` columns to add the model panel, which puts the swing being
     animated inside the model's overall predicted against actual scatter.
+
+    ``show_selector`` draws the in-figure hitter dropdown. Turn it off when the
+    surrounding app already has a picker, as the Streamlit front end does, and
+    hand this a single prepared swing instead.
     """
     if not prepared:
         raise ValueError("no swings to plot")
@@ -439,12 +448,13 @@ def swing_dashboard(prepared, predictions=None, title="Driveline hitters, swing 
         )
     fig.frames = frames
 
+    menus = [_play_menu()]
+    if show_selector and len(prepared) > 1:
+        menus.append(_swing_menu(fig, prepared, animated, shared, title))
+
     fig.update_layout(
         _layout(prepared, time_ms, title, model_range),
-        updatemenus=[
-            _play_menu(),
-            _swing_menu(fig, prepared, animated, shared, title),
-        ],
+        updatemenus=menus,
         sliders=[_slider(time_ms)],
     )
     return fig

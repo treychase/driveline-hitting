@@ -12,3 +12,6 @@ xgboost
 ezc3d
 plotly
 nbformat>=4.2.0
+
+# Front end for the same dashboard: streamlit run streamlit_app.py
+streamlit
