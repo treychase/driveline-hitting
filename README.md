@@ -9,7 +9,9 @@ the raw C3D motion capture and animates the swings themselves.
 
 `dashboards/hitter_swing_dashboard.html` is a standalone page: pick a hitter, press play, and watch
 the skeleton and bat move through the swing next to a timeline of bat speed and the vertical force
-each leg puts into the ground. Open the file directly in a browser, or rebuild it with
+each leg puts into the ground. A third panel plots the model's predicted exit velocity against what
+the ball actually did, with the loaded swing highlighted. Open the file directly in a browser, or
+rebuild it with
 
 ```python
 from c3d_functions import download_c3d, index_swings
@@ -18,6 +20,10 @@ from dashboard import pick_showcase, prepare_swings, swing_dashboard, save_dashb
 index = index_swings(download_c3d())
 save_dashboard(swing_dashboard(prepare_swings(pick_showcase(index, n=8))))
 ```
+
+Pass `predictions` (a frame of `session_swing`, `actual` and `predicted`) to `swing_dashboard()` for
+the model panel, and the same keys to `pick_showcase(restrict_to=...)` so every hitter in the
+dropdown has a prediction to show. The notebook builds those from out-of-fold forest predictions.
 
 `download_c3d()` fetches the 400 MB C3D archive from the openbiomechanics `dataset-v1` release into
 `data/c3d`, which is gitignored. Pass any subset of `index_swings()` rows to `prepare_swings()` to
