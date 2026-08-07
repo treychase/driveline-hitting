@@ -52,13 +52,20 @@ TEXT_COLOR = "#e6e9f0"
 GRID_COLOR = "#2a3040"
 
 
-def pick_showcase(index, n=8):
+def pick_showcase(index, n=8, restrict_to=None):
     """Pick n swings from distinct hitters spanning the exit velocity range.
 
     Uses each hitter's hardest swing so the dropdown reads as a tour of the
     dataset rather than eight cuts from the same guy, and keeps at least a
-    couple of lefties in the mix when they are available.
+    couple of lefties in the mix when they are available. Pass ``restrict_to``
+    a set of ``session_swing`` keys - the ones the model could score, say - to
+    choose only from swings that carry whatever else you want to show.
     """
+    if restrict_to is not None:
+        index = index[index["session_swing"].isin(set(restrict_to))]
+        if index.empty:
+            raise ValueError("restrict_to matched none of the indexed swings")
+
     best = (
         index.sort_values("exit_velo_mph", ascending=False)
         .groupby("user", as_index=False)
@@ -167,6 +174,14 @@ def _subtitle(swing):
     ]
     if row.get("bat_length_in") == row.get("bat_length_in") and row.get("bat_length_in"):
         bits.append(f"{row['bat_length_in']:.0f} in / {row['bat_weight_oz']:.0f} oz bat")
+
+    if "prediction" in swing:
+        prediction = swing["prediction"]
+        if prediction:
+            actual, predicted = prediction
+            bits.append(f"model said {predicted:.1f} ({predicted - actual:+.1f})")
+        else:
+            bits.append("not scored by the model")
     return "  |  ".join(bits)
 
 
@@ -208,18 +223,85 @@ def _time_cursor(t_ms):
     )
 
 
-def swing_dashboard(prepared, title="Driveline hitters, swing by swing"):
-    """Assemble the animated dashboard for a list of prepared swings."""
+def _attach_predictions(prepared, predictions):
+    """Hang each swing's model prediction off the prepared dict, where there is one."""
+    lookup = {}
+    if predictions is not None:
+        lookup = {
+            row["session_swing"]: (row["actual"], row["predicted"])
+            for _, row in predictions.iterrows()
+        }
+    for swing in prepared:
+        key = swing["row"].get("session_swing")
+        swing["prediction"] = lookup.get(key)
+
+
+def _model_traces(predictions):
+    """The predicted against actual cloud, drawn once and shared by every swing."""
+    lo = min(predictions["actual"].min(), predictions["predicted"].min()) - 2
+    hi = max(predictions["actual"].max(), predictions["predicted"].max()) + 2
+    return [
+        go.Scatter(
+            x=[lo, hi],
+            y=[lo, hi],
+            mode="lines",
+            line=dict(color="#485570", width=1, dash="dash"),
+            hoverinfo="skip",
+            showlegend=False,
+        ),
+        go.Scatter(
+            x=predictions["actual"],
+            y=predictions["predicted"],
+            mode="markers",
+            marker=dict(size=4.5, color=BODY_COLOR, opacity=0.32,
+                        line=dict(color="rgba(0,0,0,0)", width=0)),
+            name="All modelled swings",
+            hovertemplate="actual %{x:.1f} · predicted %{y:.1f} mph<extra></extra>",
+            showlegend=False,
+        ),
+    ], (lo, hi)
+
+
+def swing_dashboard(prepared, predictions=None, title="Driveline hitters, swing by swing"):
+    """Assemble the animated dashboard for a list of prepared swings.
+
+    Pass ``predictions`` as a frame of ``session_swing``, ``actual`` and
+    ``predicted`` columns to add the model panel, which puts the swing being
+    animated inside the model's overall predicted against actual scatter.
+    """
     if not prepared:
         raise ValueError("no swings to plot")
 
+    _attach_predictions(prepared, predictions)
+    has_model = predictions is not None and len(predictions) > 0
+
     fig = make_subplots(
-        rows=1,
+        rows=2 if has_model else 1,
         cols=2,
-        column_widths=[0.62, 0.38],
-        specs=[[{"type": "scene"}, {"type": "xy", "secondary_y": True}]],
-        subplot_titles=("", "Bat speed and weight shift"),
+        column_widths=[0.58, 0.42],
+        row_heights=[0.54, 0.46] if has_model else None,
+        vertical_spacing=0.16,
+        specs=(
+            [
+                [{"type": "scene", "rowspan": 2}, {"type": "xy", "secondary_y": True}],
+                [None, {"type": "xy"}],
+            ]
+            if has_model
+            else [[{"type": "scene"}, {"type": "xy", "secondary_y": True}]]
+        ),
+        subplot_titles=(
+            ("", "Bat speed and weight shift", "Exit velo: model vs actual")
+            if has_model
+            else ("", "Bat speed and weight shift")
+        ),
     )
+
+    model_range = None
+    if has_model:
+        traces, model_range = _model_traces(predictions)
+        for trace in traces:
+            fig.add_trace(trace, row=2, col=2)
+    shared = list(range(len(fig.data)))
 
     time_ms = prepared[0]["time_ms"]
     animated = []  # trace indices updated on every frame, per swing
@@ -315,6 +397,24 @@ def swing_dashboard(prepared, title="Driveline hitters, swing by swing"):
                 secondary_y=True,
             )
 
+        if has_model:
+            actual, predicted = swing["prediction"] or (None, None)
+            fig.add_trace(
+                go.Scatter(
+                    x=[actual] if actual is not None else [],
+                    y=[predicted] if predicted is not None else [],
+                    mode="markers",
+                    marker=dict(size=13, color=BAT_COLOR, symbol="circle",
+                                line=dict(color=BACKGROUND, width=1.5)),
+                    hovertemplate="this swing<br>actual %{x:.1f} · predicted %{y:.1f} mph"
+                    "<extra></extra>",
+                    showlegend=False,
+                    visible=first,
+                ),
+                row=2,
+                col=2,
+            )
+
         indices["stop"] = len(fig.data)
         animated.append(indices)
 
@@ -340,10 +440,10 @@ def swing_dashboard(prepared, title="Driveline hitters, swing by swing"):
     fig.frames = frames
 
     fig.update_layout(
-        _layout(prepared, time_ms, title),
+        _layout(prepared, time_ms, title, model_range),
         updatemenus=[
             _play_menu(),
-            _swing_menu(fig, prepared, animated, title),
+            _swing_menu(fig, prepared, animated, shared, title),
         ],
         sliders=[_slider(time_ms)],
     )
@@ -368,7 +468,7 @@ def _scene_ranges(swing):
     }
 
 
-def _layout(prepared, time_ms, title):
+def _layout(prepared, time_ms, title, model_range=None):
     low, high = _scene_range(prepared[0])
     axis = dict(
         backgroundcolor=PANEL,
@@ -377,12 +477,12 @@ def _layout(prepared, time_ms, title):
         color=TEXT_COLOR,
         showbackground=True,
     )
-    return dict(
+    layout = dict(
         title=dict(
             text=f"<b>{title}</b><br><span style='font-size:13px;color:#9aa3b5'>"
             f"{_subtitle(prepared[0])}</span>",
             x=0.015,
-            y=0.96,
+            y=0.97,
             xanchor="left",
             yanchor="top",
         ),
@@ -390,9 +490,9 @@ def _layout(prepared, time_ms, title):
         paper_bgcolor=BACKGROUND,
         plot_bgcolor=PANEL,
         font=dict(color=TEXT_COLOR, family="Inter, Helvetica, Arial, sans-serif"),
-        height=700,
+        height=760 if model_range else 700,
         margin=dict(l=55, r=10, t=110, b=90),
-        legend=dict(orientation="h", y=-0.16, x=0.62, font=dict(size=11)),
+        legend=dict(orientation="h", y=-0.16, x=0.60, font=dict(size=11)),
         scene=dict(
             xaxis=dict(title="to mound (m)", range=[low[0], high[0]], **axis),
             yaxis=dict(title="to RHH box (m)", range=[low[1], high[1]], **axis),
@@ -400,7 +500,7 @@ def _layout(prepared, time_ms, title):
             aspectmode="data",
             # Looking in from the open side, a little above the hitter's hands.
             camera=dict(eye=dict(x=-1.3, y=1.2, z=0.6), up=dict(x=0, y=0, z=1)),
-            domain=dict(x=[0.0, 0.58], y=[0.05, 1.0]),
+            domain=dict(x=[0.0, 0.55], y=[0.05, 1.0]),
         ),
         xaxis=dict(
             title="time to contact (ms)",
@@ -412,6 +512,19 @@ def _layout(prepared, time_ms, title):
         yaxis2=dict(title="vertical force (% bodyweight)", range=[0, 320], showgrid=False),
         shapes=[_time_cursor(time_ms[0])],
     )
+
+    if model_range:
+        # Identical ranges on both axes so the parity line runs corner to corner.
+        # Not scaleanchor'd: that would stretch the x range to match the panel's
+        # aspect and leave the data floating in the middle of it.
+        for name, label in (("xaxis2", "actual exit velo (mph)"), ("yaxis3", "predicted (mph)")):
+            layout[name] = dict(
+                title=label,
+                range=list(model_range),
+                gridcolor=GRID_COLOR,
+                zeroline=False,
+            )
+    return layout
 
 
 def _play_menu():
@@ -442,12 +555,12 @@ def _play_menu():
     )
 
 
-def _swing_menu(fig, prepared, animated, title):
+def _swing_menu(fig, prepared, animated, shared, title):
     n_traces = len(fig.data)
     buttons = []
     for swing, indices in zip(prepared, animated):
         visible = [False] * n_traces
-        for i in range(indices["start"], indices["stop"]):
+        for i in list(shared) + list(range(indices["start"], indices["stop"])):
             visible[i] = True
         layout = {
             "title.text": f"<b>{title}</b><br>"
