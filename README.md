@@ -13,7 +13,7 @@ each leg puts into the ground. Open the file directly in a browser, or rebuild i
 
 ```python
 from c3d_functions import download_c3d, index_swings
-from dashboard_functions import pick_showcase, prepare_swings, swing_dashboard, save_dashboard
+from dashboard import pick_showcase, prepare_swings, swing_dashboard, save_dashboard
 
 index = index_swings(download_c3d())
 save_dashboard(swing_dashboard(prepare_swings(pick_showcase(index, n=8))))
