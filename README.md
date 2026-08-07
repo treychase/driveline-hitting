@@ -25,6 +25,18 @@ Pass `predictions` (a frame of `session_swing`, `actual` and `predicted`) to `sw
 the model panel, and the same keys to `pick_showcase(restrict_to=...)` so every hitter in the
 dropdown has a prediction to show. The notebook builds those from out-of-fold forest predictions.
 
+## Streamlit app
+
+```bash
+pip install -r requirements.txt
+streamlit run streamlit_app.py
+```
+
+Same three panels, with the hitter and swing chosen in the sidebar instead of inside the figure, so
+only one swing is ever loaded and the page stays light. Any of the 687 swings is reachable, not just
+the eight in the static file. The download, the swing index and the model fit are all cached, so the
+wait is a first-run cost.
+
 `download_c3d()` fetches the 400 MB C3D archive from the openbiomechanics `dataset-v1` release into
 `data/c3d`, which is gitignored. Pass any subset of `index_swings()` rows to `prepare_swings()` to
 animate different hitters.

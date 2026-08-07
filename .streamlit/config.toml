@@ -1,0 +1,11 @@
+# Matches the palette the figure is built from, in dashboard.py, so the page and
+# the plot read as one object rather than a dark rectangle on a white page.
+[theme]
+base = "dark"
+primaryColor = "#ff9f43"
+backgroundColor = "#11141c"
+secondaryBackgroundColor = "#171b26"
+textColor = "#e6e9f0"
+
+[browser]
+gatherUsageStats = false
