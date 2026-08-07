@@ -6,7 +6,7 @@ reaction force. Every swing is resampled onto a shared clock with zero at
 contact, so switching hitters in the dropdown compares like for like.
 
     from c3d_functions import download_c3d, index_swings
-    from dashboard_functions import pick_showcase, prepare_swings, swing_dashboard
+    from dashboard import pick_showcase, prepare_swings, swing_dashboard
 
     c3d_dir = download_c3d()
     index = index_swings(c3d_dir)

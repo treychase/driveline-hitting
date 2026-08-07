@@ -6,6 +6,9 @@ matplotlib
 scikit-learn
 xgboost
 
-# Raw C3D reading and the animated swing dashboard
+# Raw C3D reading and the animated swing dashboard.
+# plotly needs nbformat to render a figure inline in a notebook; without it
+# fig.show() raises, though save_dashboard() still writes the HTML fine.
 ezc3d
 plotly
+nbformat>=4.2.0
