@@ -137,6 +137,14 @@ sampled at 1080 Hz.
 
 ### Functions
 
+#### `ca_bundle()`
+
+Which CA bundle to verify downloads against.
+
+Passing ``verify=`` to requests overrides the environment, which breaks the
+download for anyone sitting behind a proxy that signs its own certificates.
+Honour the standard variables first and fall back to certifi.
+
 #### `download_c3d(data_dir=DEFAULT_DATA_DIR, force=False)`
 
 Fetch and unpack the hitting C3D release asset. Returns the c3d directory.
@@ -386,7 +394,17 @@ browser, so scrubbing through a swing does not round trip to the server.
 The first run downloads the 400 MB C3D archive into ``data/c3d`` and fits the
 exit velocity model. Both are cached, so it only happens once.
 
+### Constants
+
+| Name | Value |
+| --- | --- |
+| `C3D_DIR` | `DEFAULT_DATA_DIR / 'c3d'` |
+
 ### Functions
+
+#### `c3d_present(directory=C3D_DIR)`
+
+Whether the motion capture files have been unpacked yet.
 
 #### `get_c3d_dir()`
 

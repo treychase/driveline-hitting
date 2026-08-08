@@ -12,14 +12,24 @@ The first run downloads the 400 MB C3D archive into ``data/c3d`` and fits the
 exit velocity model. Both are cached, so it only happens once.
 """
 
+from pathlib import Path
+
 import pandas as pd
 import streamlit as st
 
-from c3d_functions import download_c3d, index_swings
+from c3d_functions import DEFAULT_DATA_DIR, download_c3d, index_swings
 from dashboard import BAT_COLOR, prepare_swings, swing_dashboard
 from percentiles import FEATURE_COLUMNS, TARGET, load_percentiles, model_frame, swing_percentiles
 
 st.set_page_config(page_title="Driveline swing dashboard", page_icon="⚾", layout="wide")
+
+
+C3D_DIR = DEFAULT_DATA_DIR / "c3d"
+
+
+def c3d_present(directory=C3D_DIR):
+    """Whether the motion capture files have been unpacked yet."""
+    return Path(directory).exists() and any(Path(directory).glob("*/*.c3d"))
 
 
 @st.cache_resource(show_spinner="Fetching the C3D archive (400 MB, first run only)")
@@ -75,13 +85,58 @@ def hitter_label(row):
     return f"Hitter {int(row['user']):03d} · {row['side']}HH{level}"
 
 
-index = get_index()
-predictions = get_predictions()
-percentiles = get_percentiles()
-scored = set(predictions["session_swing"].dropna())
-
+# The header goes up before anything touches the data, so a download or a failed
+# load leaves a page that still looks like the app rather than a bare traceback.
 st.title("Driveline hitters, swing by swing")
-st.caption(
+header = st.empty()
+
+if not c3d_present():
+    header.caption("Motion capture files not found yet.")
+    with st.container(border=True):
+        st.subheader("One-time setup")
+        st.markdown(
+            f"""
+The animation reads Driveline's raw C3D motion capture, which is not stored in this repo. It
+ships as an asset on the openbiomechanics `dataset-v1` release: about **400 MB**, 687 swings
+from 97 hitters, unpacked into `{C3D_DIR}`.
+
+Fetch it once and this page will not ask again. From a terminal, if you would rather watch the
+progress there:
+
+```bash
+python -c "from c3d_functions import download_c3d; download_c3d()"
+```
+            """
+        )
+        if st.button("Download the C3D archive", type="primary"):
+            try:
+                with st.spinner("Downloading and unpacking, a few minutes on a decent connection"):
+                    get_c3d_dir()
+                st.rerun()
+            except Exception as error:  # network, TLS, disk - all land here
+                st.error(f"The download failed: {error}")
+                st.caption(
+                    "Behind a proxy that signs its own certificates, point REQUESTS_CA_BUNDLE at "
+                    "your CA file before starting the app. Otherwise check the connection and "
+                    "that there is 500 MB free."
+                )
+    st.stop()
+
+try:
+    index = get_index()
+    predictions = get_predictions()
+    percentiles = get_percentiles()
+except Exception as error:
+    header.empty()
+    st.error(f"Could not load the swing data: {type(error).__name__}: {error}")
+    st.caption(
+        f"The published metrics tables are fetched from GitHub at startup, so this usually means "
+        f"no connection. The motion capture itself is already unpacked in `{C3D_DIR}`."
+    )
+    st.stop()
+
+scored = set(predictions["session_swing"].dropna())
+header.caption(
     f"{len(index)} swings from {index['user'].nunique()} hitters, straight off the "
     "OpenBiomechanics C3D files. Markers at 360 Hz, force plates at 1080 Hz."
 )
