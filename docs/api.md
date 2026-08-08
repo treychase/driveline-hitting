@@ -347,6 +347,11 @@ contact, so switching hitters in the dropdown compares like for like.
 
 Blend the two ends of the ramp, as a hex string.
 
+The blend happens in linear light rather than on the sRGB bytes. Averaging
+the bytes of two saturated colours dims whatever sits between them - blue
+into red gives a muddy plum halfway - where mixing the light they stand for
+holds the brightness up across the middle of the scale.
+
 Direction, not judgement: 100 is the top of this group, which for attack
 angle means the steepest swing in the room rather than the best one.
 
@@ -384,6 +389,8 @@ Write a standalone HTML copy that opens without a Python kernel.
 
 | Function | What it does |
 | --- | --- |
+| `_to_linear(byte)` | One sRGB channel as linear light. |
+| `_to_srgb(value)` | One linear light channel back to an sRGB byte. |
 | `_sample(series, frames)` | Linearly interpolate a ``(3, n_frames)`` track at fractional frame indices. |
 | `_body_polyline(swing, frames)` | Skeleton as one ``(n_sampled, n_points, 3)`` polyline, NaN separated. |
 | `_swing_label(row)` | One line naming the hitter, their side, exit velo and level, for the dropdown. |

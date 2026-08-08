@@ -189,38 +189,64 @@ table.percentiles {{
 table.percentiles th {{
     text-align: left;
     font-weight: 400;
+    font-size: 0.8rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
     color: {MUTED_COLOR};
     background: {PANEL};
-    padding: 0.55rem 0.75rem;
+    padding: 0.6rem 0.85rem;
     border-bottom: 1px solid {GRID_COLOR};
 }}
 table.percentiles td {{
-    padding: 0.5rem 0.75rem;
+    padding: 0.7rem 0.85rem;
     border-bottom: 1px solid {GRID_COLOR};
     vertical-align: middle;
 }}
+table.percentiles tbody tr:hover td {{ background: {PANEL}; }}
+table.percentiles td.metric {{ font-weight: 500; }}
 table.percentiles td.measured {{ text-align: right; font-variant-numeric: tabular-nums; }}
 table.percentiles td.unit {{ color: {MUTED_COLOR}; white-space: nowrap; }}
 table.percentiles td.bar {{ width: 55%; }}
 /* The track is the full 0-100 scale; the clip shows this swing's share of it,
    and the ramp inside stays the width of the track so the colour at the end of
    a bar is the colour of that percentile, not of that bar's own length. */
-.percentile-row {{ display: flex; align-items: center; gap: 0.75rem; }}
+.percentile-row {{ display: flex; align-items: center; gap: 1rem; }}
 .percentile-track {{
+    position: relative;
     flex: 1;
-    height: 9px;
-    border-radius: 5px;
+    height: 15px;
+    border-radius: 8px;
     background: {GRID_COLOR};
-    overflow: hidden;
 }}
-.percentile-clip {{ height: 100%; overflow: hidden; border-radius: 5px; }}
+.percentile-clip {{
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    overflow: hidden;
+    border-radius: 8px;
+}}
 .percentile-ramp {{
     height: 100%;
     background: linear-gradient(90deg, {PERCENTILE_LOW}, {PERCENTILE_HIGH});
 }}
+/* Halfway down the group, so a bar reads as above or below the middle without
+   anyone having to check the number. */
+.percentile-mid {{
+    position: absolute;
+    left: 50%;
+    top: -3px;
+    bottom: -3px;
+    width: 1px;
+    background: {MUTED_COLOR};
+    opacity: 0.55;
+}}
 .percentile-value {{
-    min-width: 2.2rem;
+    min-width: 2.6rem;
     text-align: right;
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1;
     font-variant-numeric: tabular-nums;
 }}
 </style>
@@ -238,23 +264,27 @@ def percentile_table_html(table):
     rows = []
     for entry in table.to_dict("records"):
         percentile = float(entry["Percentile"])
+        tip = percentile_color(percentile)
         # The clip is the bar; the ramp inside it is widened by the inverse so
         # it still spans the whole track. Zero would divide by nothing.
         ramp_width = 100 / (percentile / 100) if percentile > 0 else 0
+        # The bar carries its own colour out past its edge, which lifts it off
+        # the track the way the numbers alone do not.
+        glow = f"box-shadow: 0 0 10px {tip}4d;" if percentile > 0 else ""
         rows.append(
             f"""<tr>
-    <td>{entry['Metric']}</td>
+    <td class="metric">{entry['Metric']}</td>
     <td class="measured">{entry['Value']:.2f}</td>
     <td class="unit">{entry['Unit']}</td>
     <td class="bar">
         <div class="percentile-row">
             <div class="percentile-track">
-                <div class="percentile-clip" style="width:{percentile:.1f}%">
+                <div class="percentile-clip" style="width:{percentile:.1f}%;{glow}">
                     <div class="percentile-ramp" style="width:{ramp_width:.1f}%"></div>
                 </div>
+                <span class="percentile-mid"></span>
             </div>
-            <span class="percentile-value" style="color:{percentile_color(percentile)}"
-                >{percentile:.0f}</span>
+            <span class="percentile-value" style="color:{tip}">{percentile:.0f}</span>
         </div>
     </td>
 </tr>"""
@@ -436,9 +466,10 @@ with st.container(**CONTAINER_BORDER):
     st.subheader("Biomechanics percentiles")
     st.caption(
         "Where this swing ranks against the 581 swings the model was fit on. Bars run steel "
-        "at the bottom of the group to red at the top. Rank inside this group, not against "
-        "any wider population, and the colour tracks rank rather than quality: a red attack "
-        "angle bar means steeper than most of the room, not better."
+        "at the bottom of the group to red at the top, and the tick marks the middle of it. "
+        "Rank inside this group, not against any wider population, and the colour tracks "
+        "rank rather than quality: a red attack angle bar means steeper than most of the "
+        "room, not better."
     )
 
     table = swing_percentiles(percentiles, row["session_swing"])
