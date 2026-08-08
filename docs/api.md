@@ -338,8 +338,22 @@ contact, so switching hitters in the dropdown compares like for like.
 | `LEAD_COLOR` | `DL_MOSS` |
 | `REAR_COLOR` | `DL_PLUM` |
 | `PLATE_COLOR` | `'#2c3038'` |
+| `PERCENTILE_LOW` | `DL_STEEL` |
+| `PERCENTILE_HIGH` | `DL_RED` |
 
 ### Functions
+
+#### `percentile_color(percentile, low=PERCENTILE_LOW, high=PERCENTILE_HIGH)`
+
+Blend the two ends of the ramp, as a hex string.
+
+The blend happens in linear light rather than on the sRGB bytes. Averaging
+the bytes of two saturated colours dims whatever sits between them - blue
+into red gives a muddy plum halfway - where mixing the light they stand for
+holds the brightness up across the middle of the scale.
+
+Direction, not judgement: 100 is the top of this group, which for attack
+angle means the steepest swing in the room rather than the best one.
 
 #### `pick_showcase(index, n=8, restrict_to=None)`
 
@@ -375,6 +389,8 @@ Write a standalone HTML copy that opens without a Python kernel.
 
 | Function | What it does |
 | --- | --- |
+| `_to_linear(byte)` | One sRGB channel as linear light. |
+| `_to_srgb(value)` | One linear light channel back to an sRGB byte. |
 | `_sample(series, frames)` | Linearly interpolate a ``(3, n_frames)`` track at fractional frame indices. |
 | `_body_polyline(swing, frames)` | Skeleton as one ``(n_sampled, n_points, 3)`` polyline, NaN separated. |
 | `_swing_label(row)` | One line naming the hitter, their side, exit velo and level, for the dropdown. |
@@ -423,6 +439,7 @@ way renders as a message rather than as nothing at all.
 | `METRIC_BORDER` | `{'border': True} if _accepts(st.metric, 'border') else {}` |
 | `CONTAINER_BORDER` | `{'border': True} if _accepts(st.container, 'border') else {}` |
 | `C3D_DIR` | `DEFAULT_DATA_DIR / 'c3d'` |
+| `PERCENTILE_CSS` | `...` |
 
 ### Functions
 
@@ -460,6 +477,15 @@ Load and resample one swing. Cached on the file path, not the index.
 #### `hitter_label(row)`
 
 Hitter number, side and playing level, for the selector and the figure title.
+
+#### `percentile_table_html(table)`
+
+The percentile table as HTML, with the bars drawn off a shared ramp.
+
+Streamlit's ProgressColumn takes one colour for the whole column, so the
+bars are built here instead: every one is a window onto the same blue to
+red ramp across 0-100, which is what lets the colours be compared between
+rows.
 
 #### `environment_note()`
 

@@ -89,7 +89,17 @@ with st.spinner("Loading pandas, plotly and the swing readers"):
         import pandas as pd
 
         from c3d_functions import DEFAULT_DATA_DIR, download_c3d, index_swings
-        from dashboard import BAT_COLOR, prepare_swings, swing_dashboard
+        from dashboard import (
+            GRID_COLOR,
+            MUTED_COLOR,
+            PANEL,
+            PERCENTILE_HIGH,
+            PERCENTILE_LOW,
+            TEXT_COLOR,
+            percentile_color,
+            prepare_swings,
+            swing_dashboard,
+        )
         from percentiles import (
             FEATURE_COLUMNS,
             TARGET,
@@ -166,6 +176,131 @@ def hitter_label(row):
         row["highest_playing_level"], str
     ) else ""
     return f"Hitter {int(row['user']):03d} · {row['side']}HH{level}"
+
+
+PERCENTILE_CSS = f"""
+<style>
+table.percentiles {{
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    color: {TEXT_COLOR};
+}}
+table.percentiles th {{
+    text-align: left;
+    font-weight: 400;
+    font-size: 0.8rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: {MUTED_COLOR};
+    background: {PANEL};
+    padding: 0.6rem 0.85rem;
+    border-bottom: 1px solid {GRID_COLOR};
+}}
+table.percentiles td {{
+    padding: 0.7rem 0.85rem;
+    border-bottom: 1px solid {GRID_COLOR};
+    vertical-align: middle;
+}}
+table.percentiles tbody tr:hover td {{ background: {PANEL}; }}
+table.percentiles td.metric {{ font-weight: 500; }}
+table.percentiles td.measured {{ text-align: right; font-variant-numeric: tabular-nums; }}
+table.percentiles td.unit {{ color: {MUTED_COLOR}; white-space: nowrap; }}
+table.percentiles td.bar {{ width: 55%; }}
+/* The track is the full 0-100 scale; the clip shows this swing's share of it,
+   and the ramp inside stays the width of the track so the colour at the end of
+   a bar is the colour of that percentile, not of that bar's own length. */
+.percentile-row {{ display: flex; align-items: center; gap: 1rem; }}
+.percentile-track {{
+    position: relative;
+    flex: 1;
+    height: 15px;
+    border-radius: 8px;
+    background: {GRID_COLOR};
+}}
+.percentile-clip {{
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    overflow: hidden;
+    border-radius: 8px;
+}}
+.percentile-ramp {{
+    height: 100%;
+    background: linear-gradient(90deg, {PERCENTILE_LOW}, {PERCENTILE_HIGH});
+}}
+/* Halfway down the group, so a bar reads as above or below the middle without
+   anyone having to check the number. */
+.percentile-mid {{
+    position: absolute;
+    left: 50%;
+    top: -3px;
+    bottom: -3px;
+    width: 1px;
+    background: {MUTED_COLOR};
+    opacity: 0.55;
+}}
+.percentile-value {{
+    min-width: 2.6rem;
+    text-align: right;
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}}
+</style>
+"""
+
+
+def percentile_table_html(table):
+    """The percentile table as HTML, with the bars drawn off a shared ramp.
+
+    Streamlit's ProgressColumn takes one colour for the whole column, so the
+    bars are built here instead: every one is a window onto the same blue to
+    red ramp across 0-100, which is what lets the colours be compared between
+    rows.
+    """
+    rows = []
+    for entry in table.to_dict("records"):
+        percentile = float(entry["Percentile"])
+        tip = percentile_color(percentile)
+        # The clip is the bar; the ramp inside it is widened by the inverse so
+        # it still spans the whole track. Zero would divide by nothing.
+        ramp_width = 100 / (percentile / 100) if percentile > 0 else 0
+        # The bar carries its own colour out past its edge, which lifts it off
+        # the track the way the numbers alone do not.
+        glow = f"box-shadow: 0 0 10px {tip}4d;" if percentile > 0 else ""
+        rows.append(
+            f"""<tr>
+    <td class="metric">{entry['Metric']}</td>
+    <td class="measured">{entry['Value']:.2f}</td>
+    <td class="unit">{entry['Unit']}</td>
+    <td class="bar">
+        <div class="percentile-row">
+            <div class="percentile-track">
+                <div class="percentile-clip" style="width:{percentile:.1f}%;{glow}">
+                    <div class="percentile-ramp" style="width:{ramp_width:.1f}%"></div>
+                </div>
+                <span class="percentile-mid"></span>
+            </div>
+            <span class="percentile-value" style="color:{tip}">{percentile:.0f}</span>
+        </div>
+    </td>
+</tr>"""
+        )
+    return (
+        PERCENTILE_CSS
+        + '<table class="percentiles"><thead><tr>'
+        + '<th title="The model\'s input features">Metric</th>'
+        + '<th title="This swing\'s raw reading">Measured</th>'
+        + "<th>Unit</th>"
+        + '<th title="Rank against the 581 swings the model was fit on">'
+        + "Percentile in this dataset</th>"
+        + "</tr></thead><tbody>"
+        + "".join(rows)
+        + "</tbody></table>"
+    )
 
 
 def environment_note():
@@ -330,39 +465,18 @@ with st.container(**CONTAINER_BORDER):
 with st.container(**CONTAINER_BORDER):
     st.subheader("Biomechanics percentiles")
     st.caption(
-        "Where this swing ranks against the 581 swings the model was fit on. Rank inside "
-        "this group, not against any wider population, and no metric here has a good end: "
-        "a high attack angle percentile means steeper than most of the room, not better."
+        "Where this swing ranks against the 581 swings the model was fit on. Bars run steel "
+        "at the bottom of the group to red at the top, and the tick marks the middle of it. "
+        "Rank inside this group, not against any wider population, and the colour tracks "
+        "rank rather than quality: a red attack angle bar means steeper than most of the "
+        "room, not better."
     )
 
     table = swing_percentiles(percentiles, row["session_swing"])
     if table.empty:
         st.info("This swing is not in the modelled set, so it has nothing to rank against.")
     else:
-        progress = {
-            "format": "%.0f",
-            "min_value": 0,
-            "max_value": 100,
-            "width": "large",
-        }
-        if _accepts(st.column_config.ProgressColumn, "color"):
-            progress["color"] = BAT_COLOR
-        st.dataframe(
-            table,
-            hide_index=True,
-            column_config={
-                "Metric": st.column_config.TextColumn(
-                    "Metric", width="medium", help="The model's input features"
-                ),
-                "Value": st.column_config.NumberColumn(
-                    "Measured", format="%.2f", help="This swing's raw reading"
-                ),
-                "Unit": st.column_config.TextColumn("Unit", width="small"),
-                "Percentile": st.column_config.ProgressColumn(
-                    "Percentile in this dataset", **progress
-                ),
-            },
-        )
+        st.markdown(percentile_table_html(table), unsafe_allow_html=True)
 
 with st.expander("How this is put together"):
     st.markdown(

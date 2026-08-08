@@ -72,6 +72,48 @@ LEAD_COLOR = DL_MOSS
 REAR_COLOR = DL_PLUM
 PLATE_COLOR = "#2c3038"
 
+# The percentile bars ramp between the same two accents the figure already uses
+# for the body and the bat: steel at the bottom of the group, red at the top.
+# The ramp is fixed to the 0-100 scale, not to each bar, so the colour at the
+# end of a bar means the same thing in every row.
+PERCENTILE_LOW = DL_STEEL
+PERCENTILE_HIGH = DL_RED
+
+
+def _to_linear(byte):
+    """One sRGB channel as linear light."""
+    channel = byte / 255
+    return channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
+
+
+def _to_srgb(value):
+    """One linear light channel back to an sRGB byte."""
+    clamped = min(max(value, 0.0), 1.0)
+    encoded = 12.92 * clamped if clamped <= 0.0031308 else 1.055 * clamped ** (1 / 2.4) - 0.055
+    return round(encoded * 255)
+
+
+def percentile_color(percentile, low=PERCENTILE_LOW, high=PERCENTILE_HIGH):
+    """Blend the two ends of the ramp, as a hex string.
+
+    The blend happens in linear light rather than on the sRGB bytes. Averaging
+    the bytes of two saturated colours dims whatever sits between them - blue
+    into red gives a muddy plum halfway - where mixing the light they stand for
+    holds the brightness up across the middle of the scale.
+
+    Direction, not judgement: 100 is the top of this group, which for attack
+    angle means the steepest swing in the room rather than the best one.
+    """
+    fraction = min(max(float(percentile), 0.0), 100.0) / 100.0
+    channels = (
+        _to_srgb(
+            _to_linear(int(low[i : i + 2], 16))
+            + fraction * (_to_linear(int(high[i : i + 2], 16)) - _to_linear(int(low[i : i + 2], 16)))
+        )
+        for i in (1, 3, 5)
+    )
+    return "#" + "".join(f"{channel:02x}" for channel in channels)
+
 
 def pick_showcase(index, n=8, restrict_to=None):
     """Pick n swings from distinct hitters spanning the exit velocity range.

@@ -116,3 +116,20 @@ jobs:
           assert swing_dashboard([swing]).layout.annotations, 'no model panel expected but figure built'
           print('dashboard ok')
           "
+
+      - name: Percentile ramp
+        run: |
+          python -c "
+          from dashboard import PERCENTILE_HIGH, PERCENTILE_LOW, percentile_color
+
+          assert percentile_color(0) == PERCENTILE_LOW, percentile_color(0)
+          assert percentile_color(100) == PERCENTILE_HIGH, percentile_color(100)
+          # Out of range values clamp rather than running off either end.
+          assert percentile_color(-10) == PERCENTILE_LOW
+          assert percentile_color(150) == PERCENTILE_HIGH
+          # Red climbs and blue falls the whole way up the scale.
+          reds = [int(percentile_color(p)[1:3], 16) for p in range(0, 101, 10)]
+          blues = [int(percentile_color(p)[5:7], 16) for p in range(0, 101, 10)]
+          assert reds == sorted(reds) and blues == sorted(blues, reverse=True), (reds, blues)
+          print('percentile ramp ok')
+          "
