@@ -72,6 +72,27 @@ LEAD_COLOR = DL_MOSS
 REAR_COLOR = DL_PLUM
 PLATE_COLOR = "#2c3038"
 
+# The percentile bars ramp between the same two accents the figure already uses
+# for the body and the bat: steel at the bottom of the group, red at the top.
+# The ramp is fixed to the 0-100 scale, not to each bar, so the colour at the
+# end of a bar means the same thing in every row.
+PERCENTILE_LOW = DL_STEEL
+PERCENTILE_HIGH = DL_RED
+
+
+def percentile_color(percentile, low=PERCENTILE_LOW, high=PERCENTILE_HIGH):
+    """Blend the two ends of the ramp, as a hex string.
+
+    Direction, not judgement: 100 is the top of this group, which for attack
+    angle means the steepest swing in the room rather than the best one.
+    """
+    fraction = min(max(float(percentile), 0.0), 100.0) / 100.0
+    channels = (
+        round(int(low[i : i + 2], 16) + fraction * (int(high[i : i + 2], 16) - int(low[i : i + 2], 16)))
+        for i in (1, 3, 5)
+    )
+    return "#" + "".join(f"{channel:02x}" for channel in channels)
+
 
 def pick_showcase(index, n=8, restrict_to=None):
     """Pick n swings from distinct hitters spanning the exit velocity range.
