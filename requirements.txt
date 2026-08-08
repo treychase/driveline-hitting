@@ -14,4 +14,6 @@ plotly
 nbformat>=4.2.0
 
 # Front end for the same dashboard: streamlit run streamlit_app.py
-streamlit
+# 1.29 is the floor the app is written against; the bordered cards and the
+# coloured percentile bars need 1.45 and are skipped on anything older.
+streamlit>=1.29

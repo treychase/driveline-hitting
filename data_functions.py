@@ -1,7 +1,42 @@
+import os
+from io import StringIO
+
 import certifi
 import pandas as pd
-from io import StringIO
 import requests
+
+# A request with no timeout waits forever. Behind a firewall that drops packets
+# rather than refusing them that means a page that never finishes its first
+# paint, so every call here gets a deadline and raises instead.
+TIMEOUT = (10, 60)
+
+POI_METRICS_URL = "https://raw.githubusercontent.com/drivelineresearch/openbiomechanics/main/baseball_hitting/data/poi/poi_metrics.csv"
+HITTRAX_URL = "https://raw.githubusercontent.com/drivelineresearch/openbiomechanics/main/baseball_hitting/data/poi/hittrax.csv"
+
+def ca_bundle():
+    """Which CA bundle to verify downloads against.
+
+    Passing ``verify=`` to requests overrides the environment, which breaks the
+    download for anyone sitting behind a proxy that signs its own certificates.
+    Honour the standard variables first and fall back to certifi.
+    """
+    return os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE") or certifi.where()
+
+def _read_csv_url(url):
+    """Fetch a CSV over HTTPS and parse it, raising on anything that is not one.
+
+    A proxy login page comes back as a 200 full of HTML, which pandas will
+    happily turn into a one column frame of nonsense; checking the status and
+    the content type turns that into an error at the point it happens.
+    """
+    response = requests.get(url, verify=ca_bundle(), timeout=TIMEOUT)
+    response.raise_for_status()
+    if "html" in response.headers.get("Content-Type", "").lower():
+        raise ValueError(
+            f"{url} returned HTML rather than CSV - something between here and GitHub is "
+            "intercepting the request"
+        )
+    return pd.read_csv(StringIO(response.text))
 
 def load_poi_metrics():
     """Download the hitting point-of-interest table from the openbiomechanics repo.
@@ -9,9 +44,7 @@ def load_poi_metrics():
     One row per swing, keyed on ``session_swing``, with the biomechanical
     metrics Driveline publishes for each capture.
     """
-    url = "https://raw.githubusercontent.com/drivelineresearch/openbiomechanics/main/baseball_hitting/data/poi/poi_metrics.csv"
-    response = requests.get(url, verify=certifi.where())
-    return pd.read_csv(StringIO(response.text))
+    return _read_csv_url(POI_METRICS_URL)
 
 def load_hittrax():
     """Download the HitTrax ball flight table, keyed on ``session_swing``.
@@ -19,9 +52,7 @@ def load_hittrax():
     Exit velocity, launch angle, spray angle, carry and the point of impact for
     each tracked swing.
     """
-    url = "https://raw.githubusercontent.com/drivelineresearch/openbiomechanics/main/baseball_hitting/data/poi/hittrax.csv"
-    response = requests.get(url, verify=certifi.where())
-    return pd.read_csv(StringIO(response.text))
+    return _read_csv_url(HITTRAX_URL)
 
 def show_missingness(df):
     """Non-null counts for the columns that have gaps, largest first.

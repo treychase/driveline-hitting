@@ -10,19 +10,102 @@ browser, so scrubbing through a swing does not round trip to the server.
 
 The first run downloads the 400 MB C3D archive into ``data/c3d`` and fits the
 exit velocity model. Both are cached, so it only happens once.
+
+Nothing heavy is imported at module scope. ``streamlit``, ``pandas``, ``plotly``
+and this project's own modules together take several seconds to import on a cold
+interpreter, and until the first widget is written the browser has an empty page
+to show - which is what a blank screen usually is. The page header goes up
+first, then the imports happen inside a spinner, and anything that fails on the
+way renders as a message rather than as nothing at all.
 """
 
-from pathlib import Path
+import inspect
 
-import pandas as pd
 import streamlit as st
-
-from c3d_functions import DEFAULT_DATA_DIR, download_c3d, index_swings
-from dashboard import BAT_COLOR, prepare_swings, swing_dashboard
-from percentiles import FEATURE_COLUMNS, TARGET, load_percentiles, model_frame, swing_percentiles
 
 st.set_page_config(page_title="Driveline swing dashboard", page_icon="⚾", layout="wide")
 
+# The header goes up before anything else, so a slow import, a failed load or a
+# missing dependency all leave a page that still reads as the app.
+st.title("Driveline hitters, swing by swing")
+header = st.empty()
+header.caption("Starting up.")
+
+
+# ------------------------------------------------------------ version support
+
+
+def _accepts(func, argument):
+    """Whether ``func`` takes a keyword argument by that name.
+
+    Streamlit gained bordered metrics, coloured progress columns and the rest
+    over several releases. Asking the installed version what it supports keeps
+    the app working on older ones instead of dying on an unexpected keyword,
+    which is the difference between a page and a traceback.
+    """
+    try:
+        return argument in inspect.signature(func).parameters
+    except (TypeError, ValueError):  # C level or otherwise unintrospectable
+        return False
+
+
+def _version():
+    """The running Streamlit version as a tuple of ints, best effort."""
+    parts = []
+    for piece in str(getattr(st, "__version__", "0")).split(".")[:3]:
+        digits = "".join(c for c in piece if c.isdigit())
+        parts.append(int(digits) if digits else 0)
+    return tuple(parts)
+
+
+if _version() < (1, 29):
+    st.error(
+        f"This app needs Streamlit 1.29 or newer; the one running is "
+        f"{getattr(st, '__version__', 'unknown')}."
+    )
+    st.caption("Upgrade with `pip install -U -r requirements.txt`, then restart the app.")
+    st.stop()
+
+# Borders came in over a few releases and are decoration, so they are dropped
+# rather than insisted on when the installed version has not got them.
+METRIC_BORDER = {"border": True} if _accepts(st.metric, "border") else {}
+CONTAINER_BORDER = {"border": True} if _accepts(st.container, "border") else {}
+
+
+def rerun():
+    """Rerun the script on whichever name this Streamlit version uses."""
+    if hasattr(st, "rerun"):
+        st.rerun()
+    else:
+        st.experimental_rerun()
+
+
+# --------------------------------------------------------------------- imports
+
+with st.spinner("Loading pandas, plotly and the swing readers"):
+    try:
+        from pathlib import Path
+
+        import pandas as pd
+
+        from c3d_functions import DEFAULT_DATA_DIR, download_c3d, index_swings
+        from dashboard import BAT_COLOR, prepare_swings, swing_dashboard
+        from percentiles import (
+            FEATURE_COLUMNS,
+            TARGET,
+            load_percentiles,
+            model_frame,
+            swing_percentiles,
+        )
+    except ImportError as error:
+        header.empty()
+        st.error(f"A package the app needs is missing: {error}")
+        st.caption(
+            "Install everything with `pip install -r requirements.txt` from the repository "
+            "root, and start the app from that same directory so the project's own modules "
+            "are importable."
+        )
+        st.stop()
 
 C3D_DIR = DEFAULT_DATA_DIR / "c3d"
 
@@ -85,14 +168,31 @@ def hitter_label(row):
     return f"Hitter {int(row['user']):03d} · {row['side']}HH{level}"
 
 
-# The header goes up before anything touches the data, so a download or a failed
-# load leaves a page that still looks like the app rather than a bare traceback.
-st.title("Driveline hitters, swing by swing")
-header = st.empty()
+def environment_note():
+    """Versions and paths, for working out why someone else's copy misbehaves."""
+    import platform
+    import sys
+
+    rows = [
+        ("Python", platform.python_version()),
+        ("Streamlit", getattr(st, "__version__", "unknown")),
+        ("Working directory", str(Path.cwd())),
+        ("C3D directory", f"{C3D_DIR.resolve()} ({'present' if c3d_present() else 'missing'})"),
+        ("Interpreter", sys.executable),
+    ]
+    for package in ("pandas", "numpy", "plotly", "sklearn", "ezc3d"):
+        try:
+            rows.append((package, __import__(package).__version__))
+        except Exception:  # not installed, or no __version__
+            rows.append((package, "not installed"))
+    return pd.DataFrame(rows, columns=["", "Version"])
+
+
+# ------------------------------------------------------------------- the page
 
 if not c3d_present():
     header.caption("Motion capture files not found yet.")
-    with st.container(border=True):
+    with st.container(**CONTAINER_BORDER):
         st.subheader("One-time setup")
         st.markdown(
             f"""
@@ -112,7 +212,7 @@ python -c "from c3d_functions import download_c3d; download_c3d()"
             try:
                 with st.spinner("Downloading and unpacking, a few minutes on a decent connection"):
                     get_c3d_dir()
-                st.rerun()
+                rerun()
             except Exception as error:  # network, TLS, disk - all land here
                 st.error(f"The download failed: {error}")
                 st.caption(
@@ -120,6 +220,8 @@ python -c "from c3d_functions import download_c3d; download_c3d()"
                     "your CA file before starting the app. Otherwise check the connection and "
                     "that there is 500 MB free."
                 )
+    with st.expander("Environment"):
+        st.dataframe(environment_note(), hide_index=True)
     st.stop()
 
 try:
@@ -133,6 +235,8 @@ except Exception as error:
         f"The published metrics tables are fetched from GitHub at startup, so this usually means "
         f"no connection. The motion capture itself is already unpacked in `{C3D_DIR}`."
     )
+    with st.expander("Environment"):
+        st.dataframe(environment_note(), hide_index=True)
     st.stop()
 
 scored = set(predictions["session_swing"].dropna())
@@ -175,6 +279,10 @@ with st.sidebar:
         "browser, so scrubbing does not reload the page."
     )
 
+if path is None:
+    st.warning("No swings to show with these filters. Untick the model filter in the sidebar.")
+    st.stop()
+
 swing = get_swing(index, path)
 
 if swing is None:
@@ -188,11 +296,11 @@ row = swing["row"]
 prediction = predictions[predictions["session_swing"] == row["session_swing"]]
 
 columns = st.columns(5)
-columns[0].metric("Exit velocity", f"{row['exit_velo_mph']:.1f} mph", border=True)
-columns[1].metric("Peak bat speed", f"{swing['speed'].max():.1f} mph", border=True)
-columns[2].metric("Lead leg peak", f"{swing['lead_grf'].max():.0f}% BW", border=True)
+columns[0].metric("Exit velocity", f"{row['exit_velo_mph']:.1f} mph", **METRIC_BORDER)
+columns[1].metric("Peak bat speed", f"{swing['speed'].max():.1f} mph", **METRIC_BORDER)
+columns[2].metric("Lead leg peak", f"{swing['lead_grf'].max():.0f}% BW", **METRIC_BORDER)
 feet, inches = divmod(int(row["height_in"]), 12)
-columns[3].metric("Hitter", f"{feet}'{inches}\" · {int(row['mass_lb'])} lb", border=True)
+columns[3].metric("Hitter", f"{feet}'{inches}\" · {int(row['mass_lb'])} lb", **METRIC_BORDER)
 if not prediction.empty:
     predicted = float(prediction["predicted"].iloc[0])
     miss = predicted - row["exit_velo_mph"]
@@ -203,12 +311,12 @@ if not prediction.empty:
         f"{predicted:.1f} mph",
         delta=f"{miss:+.1f} vs actual",
         delta_color="off",
-        border=True,
+        **METRIC_BORDER,
     )
 else:
-    columns[4].metric("Model predicted", "not scored", border=True)
+    columns[4].metric("Model predicted", "not scored", **METRIC_BORDER)
 
-with st.container(border=True):
+with st.container(**CONTAINER_BORDER):
     fig = swing_dashboard(
         [swing],
         predictions=predictions if show_model else None,
@@ -219,7 +327,7 @@ with st.container(border=True):
     # it to the container on every Streamlit version, not only the recent ones.
     st.plotly_chart(fig)
 
-with st.container(border=True):
+with st.container(**CONTAINER_BORDER):
     st.subheader("Biomechanics percentiles")
     st.caption(
         "Where this swing ranks against the 581 swings the model was fit on. Rank inside "
@@ -231,6 +339,14 @@ with st.container(border=True):
     if table.empty:
         st.info("This swing is not in the modelled set, so it has nothing to rank against.")
     else:
+        progress = {
+            "format": "%.0f",
+            "min_value": 0,
+            "max_value": 100,
+            "width": "large",
+        }
+        if _accepts(st.column_config.ProgressColumn, "color"):
+            progress["color"] = BAT_COLOR
         st.dataframe(
             table,
             hide_index=True,
@@ -243,12 +359,7 @@ with st.container(border=True):
                 ),
                 "Unit": st.column_config.TextColumn("Unit", width="small"),
                 "Percentile": st.column_config.ProgressColumn(
-                    "Percentile in this dataset",
-                    format="%.0f",
-                    min_value=0,
-                    max_value=100,
-                    width="large",
-                    color=BAT_COLOR,
+                    "Percentile in this dataset", **progress
                 ),
             },
         )
@@ -271,3 +382,7 @@ Twelve of the 687 trials lose the bat markers badly enough to reconstruct a barr
 at several hundred mph. Those are filtered out rather than animated.
         """
     )
+
+with st.expander("Environment"):
+    st.caption("What this copy of the app is running on. Worth pasting into a bug report.")
+    st.dataframe(environment_note(), hide_index=True)

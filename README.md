@@ -47,6 +47,32 @@ On first run the app asks before fetching the 400 MB C3D archive rather than dow
 spinner. Behind a proxy that signs its own certificates, set `REQUESTS_CA_BUNDLE` to your CA file
 before starting it.
 
+### If the page comes up blank
+
+```bash
+python doctor.py
+```
+
+Checks the interpreter, every package and its version, whether the C3D archive is unpacked, and
+whether GitHub is reachable, printing a line per check. Run it from the repository root, which is
+also where the app has to be started from.
+
+The three things that show an empty page rather than an error:
+
+- **A stale frontend in the browser.** Streamlit serves a hashed JavaScript bundle, and a page
+  cached from a different version asks for files the running server no longer has. Reload with the
+  cache bypassed — ctrl-shift-R, or cmd-shift-R on a Mac — or open the app in a private window.
+- **A slow first import.** `streamlit`, `pandas` and `plotly` together take a few seconds to import
+  cold, and longer on Windows with a virus scanner reading every file in `site-packages`. Nothing is
+  on screen until the script writes its first widget, so the app now puts the title up before the
+  imports and runs them behind a spinner.
+- **A request that never returns.** The metrics tables are fetched from GitHub at startup. A
+  firewall that drops packets instead of refusing them used to hang the page indefinitely; every
+  request now carries a timeout and surfaces as an error.
+
+The app itself runs on Streamlit 1.29 and newer. Bordered cards and coloured percentile bars need
+1.45, and are skipped rather than crashing on anything older.
+
 ## Percentile dataset
 
 ```bash

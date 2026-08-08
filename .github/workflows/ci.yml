@@ -32,7 +32,7 @@ jobs:
         # streamlit_app.py is a script rather than a library, so it is compiled
         # rather than imported: importing it would try to render a page.
         run: |
-          python -c "import data_functions, plot_functions, c3d_functions, percentiles, dashboard"
+          python -c "import data_functions, plot_functions, c3d_functions, percentiles, dashboard, doctor"
           python -m py_compile streamlit_app.py
 
       - name: Validate the notebook

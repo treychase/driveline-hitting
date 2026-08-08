@@ -12,12 +12,29 @@ docstring so this file stays honest.
 - [`percentiles.py`](#percentilespy) — Ranking the model's inputs across the dataset.
 - [`dashboard.py`](#dashboardpy) — Building the animated Plotly figure.
 - [`streamlit_app.py`](#streamlit_apppy) — The Streamlit front end.
+- [`doctor.py`](#doctorpy) — Checking that a machine can run the app.
 
 ## `data_functions.py`
 
 *Loading the published metrics tables.*
 
+### Constants
+
+| Name | Value |
+| --- | --- |
+| `TIMEOUT` | `(10, 60)` |
+| `POI_METRICS_URL` | `...` |
+| `HITTRAX_URL` | `...` |
+
 ### Functions
+
+#### `ca_bundle()`
+
+Which CA bundle to verify downloads against.
+
+Passing ``verify=`` to requests overrides the environment, which breaks the
+download for anyone sitting behind a proxy that signs its own certificates.
+Honour the standard variables first and fall back to certifi.
 
 #### `load_poi_metrics()`
 
@@ -61,6 +78,12 @@ Horizontal bar chart of column counts per keyword.
 
 Kept here for the import path used early in the notebook; the same chart
 lives in ``plot_functions.py``.
+
+### Internal helpers
+
+| Function | What it does |
+| --- | --- |
+| `_read_csv_url(url)` | Fetch a CSV over HTTPS and parse it, raising on anything that is not one. |
 
 ## `plot_functions.py`
 
@@ -136,14 +159,6 @@ sampled at 1080 Hz.
 | `_FILENAME` | `...` |
 
 ### Functions
-
-#### `ca_bundle()`
-
-Which CA bundle to verify downloads against.
-
-Passing ``verify=`` to requests overrides the environment, which breaks the
-download for anyone sitting behind a proxy that signs its own certificates.
-Honour the standard variables first and fall back to certifi.
 
 #### `download_c3d(data_dir=DEFAULT_DATA_DIR, force=False)`
 
@@ -394,13 +409,26 @@ browser, so scrubbing through a swing does not round trip to the server.
 The first run downloads the 400 MB C3D archive into ``data/c3d`` and fits the
 exit velocity model. Both are cached, so it only happens once.
 
+Nothing heavy is imported at module scope. ``streamlit``, ``pandas``, ``plotly``
+and this project's own modules together take several seconds to import on a cold
+interpreter, and until the first widget is written the browser has an empty page
+to show - which is what a blank screen usually is. The page header goes up
+first, then the imports happen inside a spinner, and anything that fails on the
+way renders as a message rather than as nothing at all.
+
 ### Constants
 
 | Name | Value |
 | --- | --- |
+| `METRIC_BORDER` | `{'border': True} if _accepts(st.metric, 'border') else {}` |
+| `CONTAINER_BORDER` | `{'border': True} if _accepts(st.container, 'border') else {}` |
 | `C3D_DIR` | `DEFAULT_DATA_DIR / 'c3d'` |
 
 ### Functions
+
+#### `rerun()`
+
+Rerun the script on whichever name this Streamlit version uses.
 
 #### `c3d_present(directory=C3D_DIR)`
 
@@ -432,3 +460,56 @@ Load and resample one swing. Cached on the file path, not the index.
 #### `hitter_label(row)`
 
 Hitter number, side and playing level, for the selector and the figure title.
+
+#### `environment_note()`
+
+Versions and paths, for working out why someone else's copy misbehaves.
+
+### Internal helpers
+
+| Function | What it does |
+| --- | --- |
+| `_accepts(func, argument)` | Whether ``func`` takes a keyword argument by that name. |
+| `_version()` | The running Streamlit version as a tuple of ints, best effort. |
+
+## `doctor.py`
+
+*Checking that a machine can run the app.*
+
+Check that this machine can run the Streamlit app, and say what is missing.
+
+python doctor.py
+
+A blank page in the browser says nothing about which of the half dozen things
+the app needs has gone wrong, so this walks them in order - interpreter,
+packages, versions, the C3D archive, and whether GitHub is reachable - and
+prints a line per check. Nothing here imports Streamlit's runtime or starts a
+server, so it is safe to run while the app is up.
+
+### Constants
+
+| Name | Value |
+| --- | --- |
+| `REQUIREMENTS` | `...` |
+
+### Functions
+
+#### `version_tuple(text)`
+
+Leading numeric components of a version string, as ints.
+
+#### `check_packages()`
+
+Import each requirement and compare its version against the floor.
+
+#### `check_data()`
+
+Whether the C3D archive and the percentile table are on disk.
+
+#### `check_network()`
+
+Whether the published metrics tables are reachable from here.
+
+#### `main()`
+
+_No docstring._
