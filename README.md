@@ -1,4 +1,7 @@
 # Driveline Hitting Analysis
+
+[![CI](https://github.com/treychase/driveline-hitting/actions/workflows/ci.yml/badge.svg)](https://github.com/treychase/driveline-hitting/actions/workflows/ci.yml)
+
 An analysis of Driveline's open source biomechanics dataset.
 
 The notebook works through the point-of-interest and HitTrax tables, builds a swing efficiency
@@ -39,6 +42,10 @@ wait is a first-run cost.
 
 Under the figure is a percentile table: where the selected swing's biomechanics rank against the 581
 swings the model was fit on.
+
+On first run the app asks before fetching the 400 MB C3D archive rather than downloading it behind a
+spinner. Behind a proxy that signs its own certificates, set `REQUESTS_CA_BUNDLE` to your CA file
+before starting it.
 
 ## Percentile dataset
 

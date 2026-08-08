@@ -10,6 +10,7 @@ batter's box, +z up. Four force plates sit under the batter's box and are
 sampled at 1080 Hz.
 """
 
+import os
 import re
 import zipfile
 from pathlib import Path
@@ -87,6 +88,16 @@ _FILENAME = re.compile(
 # ---------------------------------------------------------------- downloading
 
 
+def ca_bundle():
+    """Which CA bundle to verify downloads against.
+
+    Passing ``verify=`` to requests overrides the environment, which breaks the
+    download for anyone sitting behind a proxy that signs its own certificates.
+    Honour the standard variables first and fall back to certifi.
+    """
+    return os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE") or certifi.where()
+
+
 def download_c3d(data_dir=DEFAULT_DATA_DIR, force=False):
     """Fetch and unpack the hitting C3D release asset. Returns the c3d directory."""
     data_dir = Path(data_dir)
@@ -96,7 +107,7 @@ def download_c3d(data_dir=DEFAULT_DATA_DIR, force=False):
 
     data_dir.mkdir(parents=True, exist_ok=True)
     zip_path = data_dir / "hitting_c3d.zip"
-    with requests.get(C3D_ZIP_URL, stream=True, verify=certifi.where(), timeout=60) as r:
+    with requests.get(C3D_ZIP_URL, stream=True, verify=ca_bundle(), timeout=60) as r:
         r.raise_for_status()
         with open(zip_path, "wb") as f:
             for chunk in r.iter_content(chunk_size=1 << 20):
@@ -110,7 +121,7 @@ def download_c3d(data_dir=DEFAULT_DATA_DIR, force=False):
 
 def load_metadata():
     """Session level metadata (age, playing level, bat spec, bat speed) from OBP."""
-    response = requests.get(METADATA_URL, verify=certifi.where())
+    response = requests.get(METADATA_URL, verify=ca_bundle())
     from io import StringIO
 
     return pd.read_csv(StringIO(response.text))

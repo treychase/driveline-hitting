@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  checks:
+    name: Lint, imports and docs
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyflakes
+
+      - name: Lint
+        run: pyflakes *.py docs/*.py
+
+      - name: Import every module
+        # streamlit_app.py is a script rather than a library, so it is compiled
+        # rather than imported: importing it would try to render a page.
+        run: |
+          python -c "import data_functions, plot_functions, c3d_functions, percentiles, dashboard"
+          python -m py_compile streamlit_app.py
+
+      - name: Validate the notebook
+        run: |
+          python -c "
+          import nbformat
+          nb = nbformat.read('driveline_hitting.ipynb', as_version=4)
+          nbformat.validate(nb)
+          print(f'{len(nb.cells)} cells, valid')
+          "
+
+      - name: Check the API docs are in sync with the source
+        run: |
+          python docs/build_api_docs.py
+          git diff --exit-code docs/api.md \
+            || (echo '::error::docs/api.md is stale - run python docs/build_api_docs.py' && exit 1)
+
+      - name: Percentiles smoke test
+        # Runs on a synthetic frame so CI stays hermetic and does not depend on
+        # the openbiomechanics repo being reachable.
+        run: |
+          python -c "
+          import numpy as np, pandas as pd
+          from percentiles import FEATURE_COLUMNS, TARGET, build_percentiles, swing_percentiles
+
+          rng = np.random.default_rng(0)
+          n = 50
+          raw = pd.DataFrame({c: rng.normal(size=n) for c in FEATURE_COLUMNS if c != 'swing_efficiency'})
+          raw['session_swing'] = [f'{i}_1' for i in range(n)]
+          raw['blast_bat_speed_mph_x'] = rng.uniform(60, 75, n)
+          raw['hand_speed_blast_bat_mph_max_x'] = rng.uniform(18, 25, n)
+          raw[TARGET] = rng.uniform(70, 105, n)
+
+          table = build_percentiles(raw)
+          assert len(table) == n, table.shape
+          for column in FEATURE_COLUMNS + [TARGET]:
+              pct = table[f'{column}_pct']
+              assert pct.between(0, 100).all(), column
+              assert abs(pct.max() - 100) < 1e-6, column
+
+          one = swing_percentiles(table, '0_1')
+          assert list(one.columns) == ['Metric', 'Value', 'Unit', 'Percentile'], one.columns
+          assert len(one) == len(FEATURE_COLUMNS), len(one)
+          assert swing_percentiles(table, 'missing').empty
+          print('percentiles ok')
+          "
+
+      - name: Dashboard smoke test
+        # No C3D files on the runner, so this exercises the figure assembly with
+        # a synthetic swing rather than downloading 400 MB.
+        run: |
+          python -c "
+          import numpy as np, pandas as pd
+          from dashboard import swing_dashboard
+
+          frames, points = 30, 12
+          row = pd.Series({
+              'user': 1, 'session': 1, 'side': 'R', 'swing_no': 1,
+              'height_in': 72, 'mass_lb': 200, 'exit_velo_mph': 95.0,
+              'session_swing': '1_1', 'highest_playing_level': 'college',
+              'bat_length_in': 33.0, 'bat_weight_oz': 30.0,
+          })
+          swing = {
+              'row': row,
+              'label': 'test',
+              'time_ms': np.linspace(-550, 120, frames),
+              'body': np.zeros((frames, points, 3), dtype='float32'),
+              'bat': np.zeros((frames, 3, 3), dtype='float32'),
+              'trail': np.zeros((frames, 5, 3), dtype='float32'),
+              'speed': np.linspace(0, 70, frames).astype('float32'),
+              'lead_grf': np.linspace(0, 200, frames).astype('float32'),
+              'rear_grf': np.linspace(100, 0, frames).astype('float32'),
+              'plates': np.zeros((4, 4, 3), dtype='float32'),
+          }
+          predictions = pd.DataFrame({'session_swing': ['1_1'], 'actual': [95.0], 'predicted': [90.0]})
+
+          fig = swing_dashboard([swing], predictions=predictions, show_selector=False)
+          assert len(fig.frames) == frames, len(fig.frames)
+          arrows = [a for a in fig.layout.annotations if a.showarrow]
+          assert len(arrows) == 1 and arrows[0].text == '-5.0 mph', arrows
+          assert swing_dashboard([swing]).layout.annotations, 'no model panel expected but figure built'
+          print('dashboard ok')
+          "
