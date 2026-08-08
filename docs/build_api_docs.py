@@ -21,6 +21,7 @@ MODULES = [
     ("percentiles.py", "Ranking the model's inputs across the dataset."),
     ("dashboard.py", "Building the animated Plotly figure."),
     ("streamlit_app.py", "The Streamlit front end."),
+    ("doctor.py", "Checking that a machine can run the app."),
 ]
 
 
