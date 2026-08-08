@@ -1,11 +1,17 @@
-# Matches the palette the figure is built from, in dashboard.py, so the page and
-# the plot read as one object rather than a dark rectangle on a white page.
+# Matches the Driveline palette in dashboard.py, so the page chrome and the plot
+# read as one object. Change the hexes there and mirror them here.
 [theme]
 base = "dark"
-primaryColor = "#ff9f43"
-backgroundColor = "#11141c"
-secondaryBackgroundColor = "#171b26"
-textColor = "#e6e9f0"
+primaryColor = "#e23c2f"
+backgroundColor = "#0e0f12"
+secondaryBackgroundColor = "#16181d"
+textColor = "#eceef1"
+
+# Outline every widget rather than leaning on background fills alone.
+showWidgetBorder = true
+showSidebarBorder = true
+borderColor = "#23262e"
+dataframeBorderColor = "#23262e"
 
 [browser]
 gatherUsageStats = false

@@ -12,36 +12,25 @@ The first run downloads the 400 MB C3D archive into ``data/c3d`` and fits the
 exit velocity model. Both are cached, so it only happens once.
 """
 
-import numpy as np
 import pandas as pd
 import streamlit as st
 
 from c3d_functions import download_c3d, index_swings
-from dashboard import prepare_swings, swing_dashboard
-from data_functions import load_hittrax, load_poi_metrics
+from dashboard import BAT_COLOR, prepare_swings, swing_dashboard
+from percentiles import FEATURE_COLUMNS, TARGET, load_percentiles, model_frame, swing_percentiles
 
 st.set_page_config(page_title="Driveline swing dashboard", page_icon="⚾", layout="wide")
-
-FEATURES = [
-    "pitch_angle",
-    "bat_torso_angle_connection_x",
-    "hand_speed_mag_swing_max_velo_x",
-    "swing_efficiency",
-    "torso_angular_velocity_swing_max_x",
-    "attack_angle_contact_x",
-    "poi_x",
-    "poi_y",
-]
-TARGET = "exit_velo_mph_x"
 
 
 @st.cache_resource(show_spinner="Fetching the C3D archive (400 MB, first run only)")
 def get_c3d_dir():
+    """Path to the unpacked C3D files, downloading the archive on first call."""
     return download_c3d()
 
 
 @st.cache_data(show_spinner="Indexing swings")
 def get_index():
+    """One row per swing C3D, joined to the published metadata where it matches."""
     return index_swings(get_c3d_dir())
 
 
@@ -55,20 +44,20 @@ def get_predictions():
     from sklearn.ensemble import RandomForestRegressor
     from sklearn.model_selection import KFold, cross_val_predict
 
-    raw = load_poi_metrics().merge(load_hittrax(), on="session_swing", how="inner")
-    raw["swing_efficiency"] = np.where(
-        raw["hand_speed_blast_bat_mph_max_x"] == 0,
-        np.nan,
-        raw["blast_bat_speed_mph_x"] / raw["hand_speed_blast_bat_mph_max_x"],
-    )
-    model_df = raw.dropna(subset=FEATURES + [TARGET])
-    X, y = model_df[FEATURES], model_df[TARGET]
+    model_df = model_frame()
+    X, y = model_df[FEATURE_COLUMNS], model_df[TARGET]
 
     kf = KFold(n_splits=5, shuffle=True, random_state=42)
     oof = cross_val_predict(RandomForestRegressor(random_state=42), X, y, cv=kf)
     return pd.DataFrame(
         {"session_swing": model_df["session_swing"].values, "actual": y.values, "predicted": oof}
     )
+
+
+@st.cache_data(show_spinner="Ranking the biomechanics")
+def get_percentiles():
+    """The percentile table from percentiles.py, built on first run if missing."""
+    return load_percentiles()
 
 
 @st.cache_data(show_spinner="Reading motion capture")
@@ -79,6 +68,7 @@ def get_swing(_index, path):
 
 
 def hitter_label(row):
+    """Hitter number, side and playing level, for the selector and the figure title."""
     level = f" · {row['highest_playing_level']}" if isinstance(
         row["highest_playing_level"], str
     ) else ""
@@ -87,6 +77,7 @@ def hitter_label(row):
 
 index = get_index()
 predictions = get_predictions()
+percentiles = get_percentiles()
 scored = set(predictions["session_swing"].dropna())
 
 st.title("Driveline hitters, swing by swing")
@@ -142,31 +133,70 @@ row = swing["row"]
 prediction = predictions[predictions["session_swing"] == row["session_swing"]]
 
 columns = st.columns(5)
-columns[0].metric("Exit velocity", f"{row['exit_velo_mph']:.1f} mph")
-columns[1].metric("Peak bat speed", f"{swing['speed'].max():.1f} mph")
-columns[2].metric("Lead leg peak", f"{swing['lead_grf'].max():.0f}% BW")
+columns[0].metric("Exit velocity", f"{row['exit_velo_mph']:.1f} mph", border=True)
+columns[1].metric("Peak bat speed", f"{swing['speed'].max():.1f} mph", border=True)
+columns[2].metric("Lead leg peak", f"{swing['lead_grf'].max():.0f}% BW", border=True)
 feet, inches = divmod(int(row["height_in"]), 12)
-columns[3].metric("Hitter", f"{feet}'{inches}\" · {int(row['mass_lb'])} lb")
+columns[3].metric("Hitter", f"{feet}'{inches}\" · {int(row['mass_lb'])} lb", border=True)
 if not prediction.empty:
     predicted = float(prediction["predicted"].iloc[0])
+    miss = predicted - row["exit_velo_mph"]
+    # The arrow reads as direction of the miss, not as good or bad, so the
+    # colour stays neutral: up means the model over-called this swing.
     columns[4].metric(
         "Model predicted",
         f"{predicted:.1f} mph",
-        delta=f"{predicted - row['exit_velo_mph']:+.1f} vs actual",
+        delta=f"{miss:+.1f} vs actual",
         delta_color="off",
+        border=True,
     )
 else:
-    columns[4].metric("Model predicted", "not scored")
+    columns[4].metric("Model predicted", "not scored", border=True)
 
-fig = swing_dashboard(
-    [swing],
-    predictions=predictions if show_model else None,
-    title=hitter_label(row),
-    show_selector=False,
-)
-# No width argument: the figure sets no width of its own, so Plotly autosizes it
-# to the container on every Streamlit version rather than only the recent ones.
-st.plotly_chart(fig)
+with st.container(border=True):
+    fig = swing_dashboard(
+        [swing],
+        predictions=predictions if show_model else None,
+        title=hitter_label(row),
+        show_selector=False,
+    )
+    # No width argument: the figure sets no width of its own, so Plotly autosizes
+    # it to the container on every Streamlit version, not only the recent ones.
+    st.plotly_chart(fig)
+
+with st.container(border=True):
+    st.subheader("Biomechanics percentiles")
+    st.caption(
+        "Where this swing ranks against the 581 swings the model was fit on. Rank inside "
+        "this group, not against any wider population, and no metric here has a good end: "
+        "a high attack angle percentile means steeper than most of the room, not better."
+    )
+
+    table = swing_percentiles(percentiles, row["session_swing"])
+    if table.empty:
+        st.info("This swing is not in the modelled set, so it has nothing to rank against.")
+    else:
+        st.dataframe(
+            table,
+            hide_index=True,
+            column_config={
+                "Metric": st.column_config.TextColumn(
+                    "Metric", width="medium", help="The model's input features"
+                ),
+                "Value": st.column_config.NumberColumn(
+                    "Measured", format="%.2f", help="This swing's raw reading"
+                ),
+                "Unit": st.column_config.TextColumn("Unit", width="small"),
+                "Percentile": st.column_config.ProgressColumn(
+                    "Percentile in this dataset",
+                    format="%.0f",
+                    min_value=0,
+                    max_value=100,
+                    width="large",
+                    color=BAT_COLOR,
+                ),
+            },
+        )
 
 with st.expander("How this is put together"):
     st.markdown(
