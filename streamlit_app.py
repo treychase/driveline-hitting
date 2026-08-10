@@ -141,17 +141,37 @@ def get_index():
 def get_predictions():
     """Out-of-fold exit velocity predictions, mirroring the notebook's model.
 
-    Kept here rather than imported so the app stands on its own; the notebook
-    walks through the same fit with the reasoning attached.
+    The Gaussian process, which won the notebook's comparison at 6.16 RMSE
+    against 6.57 for a random forest and 6.71 for XGBoost. Kept here rather than
+    imported so the app stands on its own; the notebook walks through the same
+    fit with the reasoning attached, including why the kernel is a Matern rather
+    than the squared exponential.
     """
-    from sklearn.ensemble import RandomForestRegressor
+    import numpy as np
+    from sklearn.gaussian_process import GaussianProcessRegressor
+    from sklearn.gaussian_process.kernels import ConstantKernel, Matern, WhiteKernel
     from sklearn.model_selection import KFold, cross_val_predict
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import StandardScaler
 
     model_df = model_frame()
     X, y = model_df[FEATURE_COLUMNS], model_df[TARGET]
 
+    # Standardise first: a GP works off distances between swings, so columns in
+    # degrees would otherwise drown out a ratio. One length scale per feature.
+    gpr = Pipeline([
+        ("scale", StandardScaler()),
+        ("gpr", GaussianProcessRegressor(
+            kernel=(ConstantKernel(1.0)
+                    * Matern(np.ones(len(FEATURE_COLUMNS)), nu=1.5)
+                    + WhiteKernel(1.0)),
+            normalize_y=True,
+            random_state=42,
+        )),
+    ])
+
     kf = KFold(n_splits=5, shuffle=True, random_state=42)
-    oof = cross_val_predict(RandomForestRegressor(random_state=42), X, y, cv=kf)
+    oof = cross_val_predict(gpr, X, y, cv=kf)
     return pd.DataFrame(
         {"session_swing": model_df["session_swing"].values, "actual": y.values, "predicted": oof}
     )
@@ -487,10 +507,12 @@ sweet spot speed. Peak speed measured that way correlates 0.96 with Driveline's 
 median error near 1 mph. Every swing is resampled onto the same clock with zero at contact,
 so hitters compare like for like.
 
-The model panel plots a random forest's out-of-fold prediction of exit velocity against what
-the ball actually did, one dot per training swing. The cloud is flatter than the parity line
-because the model pulls everything toward 90 mph: it can find the hitters who move fast and
-rotate hard, but nothing in the feature set records where on the barrel the ball hit.
+The model panel plots a Gaussian process's out-of-fold prediction of exit velocity against
+what the ball actually did, one dot per training swing. It is the model that won the
+notebook's comparison, at 6.16 RMSE against 6.57 for a random forest and 6.71 for XGBoost.
+The cloud is flatter than the parity line because the model pulls everything toward 90 mph:
+it can find the hitters who move fast and rotate hard, but nothing in the feature set records
+where on the barrel the ball hit.
 
 Twelve of the 687 trials lose the bat markers badly enough to reconstruct a barrel travelling
 at several hundred mph. Those are filtered out rather than animated.

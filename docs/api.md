@@ -112,18 +112,31 @@ Horizontal bar chart of how many columns match each keyword.
 Takes the frame ``keyword_summary()`` returns and sorts it ascending, so the
 densest parts of the dataset land at the top.
 
-#### `plot_feature_importance(model, feature_names, top_n=15)`
+#### `plot_feature_importance(model, feature_names, top_n=15, X=None, y=None, n_repeats=10, random_state=42)`
 
 The fitted model's top_n features by importance, largest at the top.
 
-Works with any estimator exposing ``feature_importances_``.
+Estimators exposing ``feature_importances_`` report it directly. Anything
+that does not, a Gaussian process or a pipeline wrapping one, falls back to
+permutation importance, which needs ``X`` and ``y``: each column is shuffled
+in turn and the importance is how many mph of RMSE that costs. The two
+scales are not comparable, so the axis label says which one is being drawn.
 
-#### `plot_regression_diagnostics(model, X, y)`
+Both are measured on whatever data is passed in. On a model that fits its
+training set closely that flatters every column at once, so read the order
+rather than the magnitudes.
+
+#### `plot_regression_diagnostics(model, X, y, preds=None)`
 
 Predicted against actual, and residuals against predicted, side by side.
 
 The dashed line on the left is parity. A residual panel that slopes rather
 than sitting flat is the model regressing toward the mean.
+
+Predictions come from the model's own fit unless ``preds`` is passed, which
+is how to diagnose out-of-fold predictions instead. Worth doing for any
+model that fits its training data closely, where the in-sample panels only
+show how well it memorised.
 
 ## `c3d_functions.py`
 
@@ -463,8 +476,11 @@ One row per swing C3D, joined to the published metadata where it matches.
 
 Out-of-fold exit velocity predictions, mirroring the notebook's model.
 
-Kept here rather than imported so the app stands on its own; the notebook
-walks through the same fit with the reasoning attached.
+The Gaussian process, which won the notebook's comparison at 6.16 RMSE
+against 6.57 for a random forest and 6.71 for XGBoost. Kept here rather than
+imported so the app stands on its own; the notebook walks through the same
+fit with the reasoning attached, including why the kernel is a Matern rather
+than the squared exponential.
 
 #### `get_percentiles()`
 

@@ -5,8 +5,9 @@
 An analysis of Driveline's open source biomechanics dataset.
 
 The notebook works through the point-of-interest and HitTrax tables, builds a swing efficiency
-feature, and fits Random Forest and XGBoost models for exit velocity. The last section drops down to
-the raw C3D motion capture and animates the swings themselves.
+feature, and fits Random Forest, XGBoost and Gaussian process models for exit velocity. The GP wins
+on cross validated RMSE and is what the dashboard and the app predict with. The last section drops
+down to the raw C3D motion capture and animates the swings themselves.
 
 ## Animated swing dashboard
 
@@ -26,7 +27,8 @@ save_dashboard(swing_dashboard(prepare_swings(pick_showcase(index, n=8))))
 
 Pass `predictions` (a frame of `session_swing`, `actual` and `predicted`) to `swing_dashboard()` for
 the model panel, and the same keys to `pick_showcase(restrict_to=...)` so every hitter in the
-dropdown has a prediction to show. The notebook builds those from out-of-fold forest predictions.
+dropdown has a prediction to show. The notebook builds those from out-of-fold Gaussian process
+predictions.
 
 ## Streamlit app
 
