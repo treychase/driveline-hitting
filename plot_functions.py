@@ -112,22 +112,48 @@ def plot_keyword_summary(summary_df):
 
 # Plotting feature importance
 
-def plot_feature_importance(model, feature_names, top_n=15):
+def plot_feature_importance(model, feature_names, top_n=15, X=None, y=None,
+                            n_repeats=10, random_state=42):
     """The fitted model's top_n features by importance, largest at the top.
 
-    Works with any estimator exposing ``feature_importances_``.
+    Estimators exposing ``feature_importances_`` report it directly. Anything
+    that does not, a Gaussian process or a pipeline wrapping one, falls back to
+    permutation importance, which needs ``X`` and ``y``: each column is shuffled
+    in turn and the importance is how many mph of RMSE that costs. The two
+    scales are not comparable, so the axis label says which one is being drawn.
+
+    Both are measured on whatever data is passed in. On a model that fits its
+    training set closely that flatters every column at once, so read the order
+    rather than the magnitudes.
     """
     import matplotlib.pyplot as plt
     import pandas as pd
- 
-    importances = pd.Series(model.feature_importances_, index=feature_names)
+
+    if hasattr(model, "feature_importances_"):
+        importances = pd.Series(model.feature_importances_, index=feature_names)
+        xlabel = "Importance"
+    else:
+        from sklearn.inspection import permutation_importance
+
+        if X is None or y is None:
+            raise ValueError(
+                f"{type(model).__name__} has no feature_importances_, so importance has to "
+                "come from permuting the columns - pass X and y"
+            )
+        result = permutation_importance(
+            model, X, y, scoring="neg_root_mean_squared_error",
+            n_repeats=n_repeats, random_state=random_state,
+        )
+        importances = pd.Series(result.importances_mean, index=feature_names)
+        xlabel = "RMSE cost of shuffling the column (mph)"
+
     importances = importances.sort_values(ascending=True).tail(top_n)
     labels = [name.replace("_", " ").title() for name in importances.index]
- 
+
     fig, ax = plt.subplots(figsize=(8, max(4, 0.4 * len(labels))))
     ax.barh(labels, importances.values, color="lightblue", edgecolor="black")
- 
-    ax.set_xlabel("Importance")
+
+    ax.set_xlabel(xlabel)
     ax.set_title("Feature Importance")
     ax.grid(False)
     plt.tight_layout()
@@ -135,15 +161,20 @@ def plot_feature_importance(model, feature_names, top_n=15):
 
 # Plot regression diagnostics 
 
-def plot_regression_diagnostics(model, X, y):
+def plot_regression_diagnostics(model, X, y, preds=None):
     """Predicted against actual, and residuals against predicted, side by side.
 
     The dashed line on the left is parity. A residual panel that slopes rather
     than sitting flat is the model regressing toward the mean.
+
+    Predictions come from the model's own fit unless ``preds`` is passed, which
+    is how to diagnose out-of-fold predictions instead. Worth doing for any
+    model that fits its training data closely, where the in-sample panels only
+    show how well it memorised.
     """
     import matplotlib.pyplot as plt
- 
-    preds = model.predict(X)
+
+    preds = model.predict(X) if preds is None else preds
     residuals = y - preds
  
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
